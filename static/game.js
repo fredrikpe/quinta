@@ -3,7 +3,6 @@ let gridData = Array(5).fill().map(() => Array(5).fill(''));
 let pluswordData = '';
 let startTime = null;
 let timerInterval = null;
-let validationInProgress = false;
 let currentMode = 'across'; // 'across' or 'down'
 let activeCell = { row: null, col: null };
 let prevActiveOnMouseDown = null;
@@ -37,7 +36,6 @@ async function loadPuzzle() {
     }
     currentPuzzle = await response.json();
     displayClues();
-    displayPluswordClue();
   } catch (error) {
     console.error('Error loading puzzle:', error);
     showModal('❌', 'Error', 'Failed to load puzzle. Please refresh the page.');
@@ -86,11 +84,6 @@ function displayClues() {
     });
     downClues.appendChild(clueDiv);
   });
-}
-
-function displayPluswordClue() {
-  const pluswordClueElement = document.getElementById('plusword-clue');
-  pluswordClueElement.textContent = currentPuzzle.plusword_clue;
 }
 
 function createGrid() {
@@ -192,7 +185,6 @@ function handlePluswordInput(e, index) {
 }
 
 function handleKeyDown(e, row, col) {
-  console.log(e, row, col)
   // Handle letter input
   if (e.key.length === 1 && e.key.match(/[a-zA-Z]/)) {
     e.preventDefault();
@@ -369,46 +361,10 @@ function checkIfComplete() {
   const allGridFilled = gridData.every(row => row.every(cell => cell !== ''));
   const pluswordFilled = pluswordData.length === 5;
 
-  if (allGridFilled && pluswordFilled && !validationInProgress) {
-    validationInProgress = true;
-    // Validate immediately (no artificial delay)
-    validatePuzzle();
-  }
-}
+  if (allGridFilled && pluswordFilled) {
+    const success = validatePuzzle();
 
-async function validatePuzzle() {
-  // Perform client-side validation using today's puzzle data (no network request)
-  try {
-    const errors = [];
-    if (!currentPuzzle) {
-      throw new Error('No puzzle loaded');
-    }
-
-    // Check across words (rows)
-    currentPuzzle.across_words.forEach((expectedWord, row) => {
-      for (let col = 0; col < expectedWord.word.length; col++) {
-        const expectedChar = expectedWord.word[col].toUpperCase();
-        const actual = (gridData[row][col] || '').toUpperCase();
-        if (actual !== expectedChar) errors.push({ row, col });
-      }
-    });
-
-    // Check down words (columns)
-    currentPuzzle.down_words.forEach((expectedWord, col) => {
-      for (let row = 0; row < expectedWord.word.length; row++) {
-        const expectedChar = expectedWord.word[row].toUpperCase();
-        const actual = (gridData[row][col] || '').toUpperCase();
-        if (actual !== expectedChar) {
-          if (!errors.find(e => e.row === row && e.col === col)) errors.push({ row, col });
-        }
-      }
-    });
-
-    // Check plusword
-    const pluswordSolution = currentPuzzle.plusword || '';
-    const pluswordError = pluswordData.toUpperCase() !== pluswordSolution.toUpperCase();
-
-    if (errors.length === 0 && !pluswordError) {
+    if (success) {
       clearInterval(timerInterval);
       document.querySelectorAll('input').forEach(cell => {
         cell.classList.add('bg-green-200');
@@ -420,15 +376,43 @@ async function validatePuzzle() {
       const timeStr = `${minutes}:${String(seconds).padStart(2, '0')}`;
       showModal('🎉', 'Congratulations!', `You solved the puzzle in ${timeStr}!`);
     } else {
-      // Do not highlight incorrect letters when showing the modal, per user preference
       showModal('❌', 'Not Quite!', 'At least one letter is wrong. Keep trying!');
-      validationInProgress = false;
     }
-  } catch (error) {
-    console.error('Error validating answers:', error);
-    showModal('❌', 'Error', 'Failed to validate answers. Please try again.');
-    validationInProgress = false;
   }
+}
+
+function validatePuzzle() {
+  if (!currentPuzzle) {
+    throw new Error('No puzzle loaded');
+  }
+
+  // Check across words (rows)
+  for (let row = 0; row < currentPuzzle.across_words.length; row++) {
+    const across = currentPuzzle.across_words[row];
+    for (let col = 0; col < across.word.length; col++) {
+      const expectedChar = across.word[col].toUpperCase();
+      const actual = (gridData[row][col] || '').toUpperCase();
+      if (actual !== expectedChar) return false;
+    }
+  }
+
+  for (let col = 0; col < currentPuzzle.down_words.length; col++) {
+    const down = currentPuzzle.down_words[col];
+    for (let row = 0; row < down.word.length; row++) {
+      const expectedChar = down.word[row].toUpperCase();
+      const actual = (gridData[row][col] || '').toUpperCase();
+      if (actual !== expectedChar) {
+        return false;
+      }
+    }
+  }
+
+  // Check plusword
+  const pluswordSolution = currentPuzzle.plusword || '';
+  if (pluswordData.toUpperCase() !== pluswordSolution.toUpperCase()) {
+    return false;
+  }
+  return true;
 }
 
 function handleCellFocus(e, row, col) {
@@ -518,7 +502,7 @@ function showModal(icon, title, message) {
   document.getElementById('modal-message').textContent = message;
   document.getElementById('result-modal').classList.remove('hidden');
   // Close modal on any key press (once)
-  modalKeyHandlerRef = function () {
+  modalKeyHandlerRef = function() {
     hideModal();
   };
   document.addEventListener('keydown', modalKeyHandlerRef);
