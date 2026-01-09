@@ -61,28 +61,46 @@ fn get_clue_for_word(word: &str) -> Result<String> {
     stmt.query_row([word], |row| row.get(0))
 }
 
-fn hints(plusword: &str, word: &str) -> Vec<Option<Hint>> {
+fn hints_across(plusword: &str, word: &str) -> Vec<Option<Hint>> {
     let mut hints: Vec<Option<Hint>> = vec![None; word.len()];
 
     let solution_chars: Vec<char> = plusword.chars().collect();
     let word_chars: Vec<char> = word.chars().collect();
 
-    // 1. GREEN pass
-    for i in 0..word_chars.len() {
+    // 1. GREEN pass - check position match
+    for i in 0..word_chars.len().min(solution_chars.len()) {
         if word_chars[i] == solution_chars[i] {
-            hints[i] = Some(Hint::GREEN);
+            hints[i] = Some(Hint::Green);
         }
     }
-    // 2. YELLOW pass (only for chars not already GREEN)
+    // 2. YELLOW pass - check if char exists anywhere in plusword (not already GREEN)
     for i in 0..word_chars.len() {
-        if hints[i].is_none()
-            && solution_chars.contains(&word_chars[i])
-            && !solution_chars
-                .iter()
-                .enumerate()
-                .any(|(j, c)| j == i && *c == word_chars[i])
-        {
-            hints[i] = Some(Hint::YELLOW);
+        if hints[i].is_none() && solution_chars.contains(&word_chars[i]) {
+            hints[i] = Some(Hint::Yellow);
+        }
+    }
+    hints
+}
+
+fn hints_down(plusword: &str, word: &str, col_index: usize) -> Vec<Option<Hint>> {
+    let mut hints: Vec<Option<Hint>> = vec![None; word.len()];
+
+    let solution_chars: Vec<char> = plusword.chars().collect();
+    let word_chars: Vec<char> = word.chars().collect();
+
+    // For down words, only check GREEN for the character at position col_index in plusword
+    if col_index < solution_chars.len() {
+        for (row, &ch) in word_chars.iter().enumerate() {
+            if ch == solution_chars[col_index] {
+                hints[row] = Some(Hint::Green);
+            }
+        }
+    }
+
+    // YELLOW pass - check if char exists anywhere in plusword (not already GREEN)
+    for row in 0..word_chars.len() {
+        if hints[row].is_none() && solution_chars.contains(&word_chars[row]) {
+            hints[row] = Some(Hint::Yellow);
         }
     }
     hints
@@ -107,7 +125,7 @@ async fn get_today_puzzle(_data: web::Data<AppState>) -> impl Responder {
                 across_with_clues.push(WordWithPosition {
                     word: word.clone(),
                     clue,
-                    hints: hints(&plusword, &word),
+                    hints: hints_across(&plusword, &word),
                     position: i,
                 });
             }
@@ -118,7 +136,7 @@ async fn get_today_puzzle(_data: web::Data<AppState>) -> impl Responder {
                 down_with_clues.push(WordWithPosition {
                     word: word.clone(),
                     clue,
-                    hints: hints(&plusword, &word),
+                    hints: hints_down(&plusword, &word, i),
                     position: i,
                 });
             }
