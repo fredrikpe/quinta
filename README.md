@@ -57,7 +57,32 @@ quinta/
 
 - **Backend**: Rust + Actix-web
 - **Frontend**: Vanilla HTML/JavaScript + Tailwind CSS (CDN)
-- **No database**: Puzzle is hard-coded in the backend
+- **Database**: SQLite (optional, for storing multiple puzzles)
+- **Current setup**: Hard-coded puzzle in the backend
+
+## Puzzle Management
+
+Quinta includes tools to fetch and import Telegraph Plusword puzzles:
+
+### Fetch Puzzles
+
+Fetch puzzles from lettersolver.com:
+```bash
+./fetch_puzzles.sh 30  # Fetch last 30 days
+```
+
+### Import to Database
+
+Import fetched puzzles to SQLite:
+```bash
+cargo run --bin import_puzzles
+```
+
+This creates `quinta.db` with:
+- **clue_word_pairs** table - All word/clue combinations
+- **puzzles** table - Complete daily puzzles (5 across + 5 down + plusword)
+
+See [PUZZLE_FETCHER.md](PUZZLE_FETCHER.md) for detailed instructions.
 
 ## Development
 

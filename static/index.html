@@ -5,48 +5,84 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quinta - Daily Word Puzzle</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .cell-wrapper {
+            position: relative;
+        }
+        .cell-number {
+            position: absolute;
+            top: 2px;
+            left: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            color: #374151;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .plusword-highlight {
+            background: repeating-linear-gradient(
+                45deg,
+                #FEF3C7,
+                #FEF3C7 10px,
+                #FDE68A 10px,
+                #FDE68A 20px
+            );
+        }
+    </style>
 </head>
-<body class="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center p-4">
-    <div class="bg-white rounded-3xl shadow-2xl max-w-4xl w-full p-8 md:p-12">
-        <header class="text-center mb-8">
-            <h1 class="text-5xl md:text-6xl font-extrabold text-indigo-600 tracking-wider mb-2">QUINTA</h1>
-            <p class="text-gray-600 text-lg mb-2">Daily Word Puzzle</p>
-            <p class="text-gray-500 text-sm" id="date"></p>
+<body class="min-h-screen bg-gray-50 p-4">
+    <div class="max-w-7xl mx-auto">
+        <header class="text-center py-6">
+            <div class="inline-block bg-gray-900 text-white px-8 py-3 rounded-lg mb-4">
+                <h1 class="text-2xl font-bold tracking-wider">QUINTA NO. <span id="puzzle-number">1328</span></h1>
+            </div>
         </header>
 
-        <main>
-            <div class="space-y-8">
-                <div class="grid md:grid-cols-2 gap-6">
+        <main class="max-w-7xl mx-auto">
+            <div class="grid lg:grid-cols-2 gap-8 items-start">
+                <!-- Crossword Grid -->
+                <div class="flex flex-col items-center justify-center lg:justify-start">
+                    <div id="crossword-grid" class="inline-grid grid-cols-5 gap-0 border-4 border-black mb-8"></div>
+
+                    <!-- Plusword Section -->
+                    <div class="w-full max-w-md">
+                        <div class="bg-gray-100 p-6 rounded-lg">
+                            <h3 class="text-lg font-bold mb-2 text-center">PLUSWORD</h3>
+                            <p id="plusword-clue" class="text-sm text-gray-600 mb-4 text-center italic"></p>
+                            <div id="plusword-grid" class="flex justify-center gap-1"></div>
+                        </div>
+                    </div>
+
+                    <div id="timer" class="mt-6 text-gray-600 font-mono text-xl">00:00</div>
+                </div>
+
+                <!-- Clues -->
+                <div class="space-y-6">
                     <div>
-                        <h3 class="text-xl font-bold text-indigo-600 mb-4">ACROSS</h3>
+                        <h2 class="text-2xl font-bold mb-4">Across</h2>
                         <div id="across-clues" class="space-y-2"></div>
                     </div>
                     <div>
-                        <h3 class="text-xl font-bold text-indigo-600 mb-4">DOWN</h3>
+                        <h2 class="text-2xl font-bold mb-4">Down</h2>
                         <div id="down-clues" class="space-y-2"></div>
                     </div>
                 </div>
-
-                <div class="flex justify-center">
-                    <div id="crossword-grid" class="grid grid-cols-5 gap-1 bg-gray-300 p-1 rounded-lg w-fit"></div>
-                </div>
-
-                <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                    <button id="check-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-8 py-3 rounded-lg transition transform hover:-translate-y-0.5 hover:shadow-lg">
-                        Check Answers
-                    </button>
-                    <button id="clear-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold px-8 py-3 rounded-lg transition">
-                        Clear Grid
-                    </button>
-                </div>
-
-                <div id="message" class="text-center font-semibold min-h-12 flex items-center justify-center rounded-lg"></div>
             </div>
         </main>
 
-        <footer class="text-center mt-8 text-gray-500 text-sm">
-            <p>A new puzzle every day at midnight</p>
-        </footer>
+        <!-- Result Modal -->
+        <div id="result-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+                <div id="modal-content" class="text-center">
+                    <div id="modal-icon" class="text-6xl mb-4"></div>
+                    <h2 id="modal-title" class="text-2xl font-bold mb-2"></h2>
+                    <p id="modal-message" class="text-gray-600 mb-6"></p>
+                    <button id="modal-close" class="bg-gray-900 hover:bg-gray-800 text-white font-semibold px-8 py-3 rounded-full transition">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="/game.js"></script>
