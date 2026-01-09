@@ -6,6 +6,7 @@ pub struct DailyPuzzle {
     pub across_words: Vec<WordWithPosition>,
     pub down_words: Vec<WordWithPosition>,
     pub plusword_clue: String,
+    pub plusword: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

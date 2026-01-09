@@ -76,6 +76,7 @@ async fn get_today_puzzle(_data: web::Data<AppState>) -> impl Responder {
                 across_words: across_with_clues,
                 down_words: down_with_clues,
                 plusword_clue,
+                plusword,
             };
 
             HttpResponse::Ok().json(puzzle)
