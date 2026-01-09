@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quinta - Daily Word Puzzle</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-4xl w-full p-8 md:p-12">
+        <header class="text-center mb-8">
+            <h1 class="text-5xl md:text-6xl font-extrabold text-indigo-600 tracking-wider mb-2">QUINTA</h1>
+            <p class="text-gray-600 text-lg mb-2">Daily Word Puzzle</p>
+            <p class="text-gray-500 text-sm" id="date"></p>
+        </header>
+
+        <main>
+            <div class="space-y-8">
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div>
+                        <h3 class="text-xl font-bold text-indigo-600 mb-4">ACROSS</h3>
+                        <div id="across-clues" class="space-y-2"></div>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-indigo-600 mb-4">DOWN</h3>
+                        <div id="down-clues" class="space-y-2"></div>
+                    </div>
+                </div>
+
+                <div class="flex justify-center">
+                    <div id="crossword-grid" class="grid grid-cols-5 gap-1 bg-gray-300 p-1 rounded-lg w-fit"></div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                    <button id="check-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-8 py-3 rounded-lg transition transform hover:-translate-y-0.5 hover:shadow-lg">
+                        Check Answers
+                    </button>
+                    <button id="clear-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold px-8 py-3 rounded-lg transition">
+                        Clear Grid
+                    </button>
+                </div>
+
+                <div id="message" class="text-center font-semibold min-h-12 flex items-center justify-center rounded-lg"></div>
+            </div>
+        </main>
+
+        <footer class="text-center mt-8 text-gray-500 text-sm">
+            <p>A new puzzle every day at midnight</p>
+        </footer>
+    </div>
+
+    <script src="/game.js"></script>
+</body>
+</html>
