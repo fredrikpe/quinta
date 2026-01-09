@@ -425,10 +425,6 @@ function checkIfComplete() {
 
     if (success) {
       clearInterval(timerInterval);
-      document.querySelectorAll('input').forEach(cell => {
-        cell.classList.add('bg-green-200');
-        cell.disabled = true;
-      });
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
       const minutes = Math.floor(elapsed / 60);
       const seconds = elapsed % 60;
@@ -491,7 +487,7 @@ function handleCellClick(e, row, col) {
 }
 
 function highlightActiveWord() {
-  // Remove all highlights
+  // Remove all highlights (but preserve hint classes)
   document.querySelectorAll('[data-row]').forEach(cell => {
     cell.classList.remove('bg-blue-100');
     cell.style.boxShadow = '';
@@ -564,7 +560,7 @@ function showModal(icon, title, message) {
   // ensure modal is visible even if Tailwind classes are changed; force display
   modal.style.display = 'flex';
   // Close modal on any key press or any click (capture-phase so inputs/buttons don't intercept)
-  modalKeyHandlerRef = function (e) {
+  modalKeyHandlerRef = function(e) {
     hideModal();
   };
   window.addEventListener('keydown', modalKeyHandlerRef, { capture: true });

@@ -29,10 +29,26 @@
             );
         }
         .hint-yellow {
-            background-color: rgba(253, 224, 71, 0.25);
+            background-color: rgba(253, 224, 71, 0.4) !important;
         }
         .hint-green {
-            background-color: rgba(110, 231, 183, 0.18);
+            background-color: rgba(110, 231, 183, 0.3) !important;
+        }
+        /* Override when highlighted with bg-blue-100 */
+        input[data-row].hint-yellow.bg-blue-100 {
+            background-color: rgba(253, 224, 71, 0.5) !important;
+        }
+        input[data-row].hint-green.bg-blue-100 {
+            background-color: rgba(110, 231, 183, 0.4) !important;
+        }
+        /* Override focus/active states to preserve hint colors */
+        input[data-row].hint-yellow:focus,
+        input[data-row].hint-yellow:active {
+            background-color: rgba(253, 224, 71, 0.5) !important;
+        }
+        input[data-row].hint-green:focus,
+        input[data-row].hint-green:active {
+            background-color: rgba(110, 231, 183, 0.4) !important;
         }
     </style>
 </head>
