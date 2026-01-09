@@ -12,9 +12,61 @@ let modalKeyHandlerRef = null;
 async function init() {
   await loadPuzzle();
   createGrid();
+  applyHints();
   createPluswordInput();
   setupEventListeners();
   startTimer();
+}
+
+function applyHints() {
+  // Clear existing hint classes
+  document.querySelectorAll('[data-row]').forEach(cell => {
+    cell.classList.remove('hint-yellow', 'hint-green');
+  });
+
+  if (!currentPuzzle) return;
+
+  // Hints are provided per-word in across_words[].hints and down_words[].hints
+  // Apply across-word hints first
+  if (currentPuzzle.across_words && Array.isArray(currentPuzzle.across_words)) {
+    currentPuzzle.across_words.forEach((w) => {
+      const row = w.position;
+      if (!Array.isArray(w.hints)) return;
+      w.hints.forEach((hint, col) => {
+        if (!hint) return;
+        const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+        if (!cell) return;
+        const v = String(hint).toLowerCase();
+        if (v.startsWith('g')) {
+          cell.classList.remove('hint-yellow');
+          cell.classList.add('hint-green');
+        } else if (v.startsWith('y')) {
+          // only add yellow if green not already set
+          if (!cell.classList.contains('hint-green')) cell.classList.add('hint-yellow');
+        }
+      });
+    });
+  }
+
+  // Then apply down-word hints (they may override across hints)
+  if (currentPuzzle.down_words && Array.isArray(currentPuzzle.down_words)) {
+    currentPuzzle.down_words.forEach((w) => {
+      const col = w.position;
+      if (!Array.isArray(w.hints)) return;
+      w.hints.forEach((hint, row) => {
+        if (!hint) return;
+        const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+        if (!cell) return;
+        const v = String(hint).toLowerCase();
+        if (v.startsWith('g')) {
+          cell.classList.remove('hint-yellow');
+          cell.classList.add('hint-green');
+        } else if (v.startsWith('y')) {
+          if (!cell.classList.contains('hint-green')) cell.classList.add('hint-yellow');
+        }
+      });
+    });
+  }
 }
 
 function startTimer() {
@@ -157,6 +209,13 @@ function createPluswordInput() {
     cell.addEventListener('focus', (e) => {
       // keep caret hidden and avoid selection highlighting
       e.target.select();
+      // When focusing plusword, ensure any focused grid cell loses focus and highlight
+      if (activeCell && activeCell.row !== null && activeCell.col !== null) {
+        const prevGridCell = document.querySelector(`[data-row="${activeCell.row}"][data-col="${activeCell.col}"]`);
+        if (prevGridCell) prevGridCell.blur();
+        activeCell = { row: null, col: null };
+        highlightActiveWord();
+      }
     });
     pluswordGrid.appendChild(cell);
   }
@@ -500,18 +559,27 @@ function showModal(icon, title, message) {
   document.getElementById('modal-icon').textContent = icon;
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-message').textContent = message;
-  document.getElementById('result-modal').classList.remove('hidden');
-  // Close modal on any key press (once)
-  modalKeyHandlerRef = function() {
+  const modal = document.getElementById('result-modal');
+  modal.classList.remove('hidden');
+  // ensure modal is visible even if Tailwind classes are changed; force display
+  modal.style.display = 'flex';
+  // Close modal on any key press or any click (capture-phase so inputs/buttons don't intercept)
+  modalKeyHandlerRef = function (e) {
     hideModal();
   };
-  document.addEventListener('keydown', modalKeyHandlerRef);
+  window.addEventListener('keydown', modalKeyHandlerRef, { capture: true });
+  window.addEventListener('keypress', modalKeyHandlerRef, { capture: true });
+  window.addEventListener('click', modalKeyHandlerRef, { capture: true });
 }
 
 function hideModal() {
   document.getElementById('result-modal').classList.add('hidden');
+  const modal = document.getElementById('result-modal');
+  modal.style.display = '';
   if (modalKeyHandlerRef) {
-    document.removeEventListener('keydown', modalKeyHandlerRef);
+    window.removeEventListener('keydown', modalKeyHandlerRef, { capture: true });
+    window.removeEventListener('keypress', modalKeyHandlerRef, { capture: true });
+    window.removeEventListener('click', modalKeyHandlerRef, { capture: true });
     modalKeyHandlerRef = null;
   }
 }

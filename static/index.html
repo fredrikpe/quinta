@@ -13,7 +13,7 @@
             position: absolute;
             top: 2px;
             left: 4px;
-            font-size: 10px;
+            font-size: 15px;
             font-weight: 600;
             color: #374151;
             z-index: 10;
@@ -28,6 +28,12 @@
                 #FDE68A 20px
             );
         }
+        .hint-yellow {
+            background-color: rgba(253, 224, 71, 0.25);
+        }
+        .hint-green {
+            background-color: rgba(110, 231, 183, 0.18);
+        }
     </style>
 </head>
 <body class="min-h-screen bg-gray-50 p-4">
@@ -39,9 +45,9 @@
         </header>
 
         <main class="max-w-7xl mx-auto">
-            <div class="grid lg:grid-cols-2 gap-8 items-start">
+            <div class="grid md:grid-cols-2 gap-8 items-start">
                 <!-- Crossword Grid -->
-                <div class="flex flex-col items-center justify-center lg:justify-start">
+                <div class="flex flex-col items-center justify-center md:justify-start -mx-4 md:mx-0">
                     <div id="crossword-grid" class="inline-grid grid-cols-5 gap-0 border-4 border-black mb-8"></div>
                     <div class="w-full max-w-md">
                         <div class="bg-gray-100 p-6 rounded-lg">
@@ -53,7 +59,7 @@
                 </div>
 
                 <!-- Clues -->
-                <div id="clues-container" class="space-y-6 hidden lg:block">
+                <div id="clues-container" class="space-y-6 hidden md:block">
                     <div>
                         <h2 class="text-2xl font-bold mb-4">Across</h2>
                         <div id="across-clues" class="space-y-2"></div>
