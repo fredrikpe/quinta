@@ -19,15 +19,6 @@
             z-index: 10;
             pointer-events: none;
         }
-        .plusword-highlight {
-            background: repeating-linear-gradient(
-                45deg,
-                #FEF3C7,
-                #FEF3C7 10px,
-                #FDE68A 10px,
-                #FDE68A 20px
-            );
-        }
         .hint-yellow {
             background-color: rgba(253, 224, 71, 0.4) !important;
         }
@@ -45,22 +36,23 @@
         }
 
         /* Make crossword grid always square */
-        #crossword-grid {
+        #root .crossword-grid {
             aspect-ratio: 1 / 1;
             width: 100%;
             max-width: min(90vw, 400px);
         }
 
         /* Match plusword width to main grid */
-        #plusword-grid {
+        #root .plusword-grid {
             width: 100%;
             max-width: min(90vw, 400px);
         }
 
         /* Ensure grid cells maintain square aspect ratio */
-        #crossword-grid input {
+        #root .crossword-grid input {
             aspect-ratio: 1 / 1;
         }
+
         .hatch {
           background-image: repeating-linear-gradient(
             45deg,
@@ -73,61 +65,7 @@
     </style>
 </head>
 <body class="min-h-screen bg-gray-50 p-4">
-    <div class="max-w-7xl mx-auto">
-        <header class="text-center py-6">
-            <div class="inline-block bg-gray-900 text-white px-8 py-3 rounded-lg mb-4">
-                <h1 class="text-2xl font-bold tracking-wider">QUINTA NO. <span id="puzzle-number">1328</span></h1>
-            </div>
-        </header>
-
-        <main class="max-w-7xl mx-auto">
-            <div class="grid md:grid-cols-2 gap-8 items-start">
-                <!-- Crossword Grid -->
-                <div class="flex flex-col items-center justify-center md:justify-start">
-                    <div id="crossword-grid" class="inline-grid grid-cols-5 gap-0 border-2 border-black mb-8"></div>
-                    <div class="w-full flex justify-center">
-                        <div class="bg-gray-100 p-6 rounded-lg" style="width: min(90vw, 400px);">
-                            <div id="plusword-grid" class="flex justify-center"></div>
-                            <p id="selected-clue" class="text-lg font-semibold text-gray-800 mt-4 text-center"></p>
-                        </div>
-                    </div>
-                    <div id="timer" class="mt-6 text-gray-600 font-mono text-xl">00:00</div>
-                </div>
-
-                <!-- Clues -->
-                <div id="clues-container" class="space-y-6 hidden md:block">
-                    <div>
-                        <h2 class="text-2xl font-bold mb-4">Across</h2>
-                        <div id="across-clues" class="space-y-2"></div>
-                    </div>
-                    <div>
-                        <h2 class="text-2xl font-bold mb-4">Down</h2>
-                        <div id="down-clues" class="space-y-2"></div>
-                    </div>
-                </div>
-            </div>
-        </main>
-
-        <!-- Result Modal -->
-        <div id="result-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div class="bg-white rounded-lg p-8 max-w-md w-full mx-4">
-                <div id="modal-content" class="text-center">
-                    <div id="modal-icon" class="text-6xl mb-4"></div>
-                    <h2 id="modal-title" class="text-2xl font-bold mb-2"></h2>
-                    <p id="modal-message" class="text-gray-600 mb-6"></p>
-                    <div class="flex gap-3 justify-center">
-                        <button id="modal-copy" class="hidden bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-3 rounded-full transition">
-                            Copy
-                        </button>
-                        <button id="modal-close" class="bg-gray-900 hover:bg-gray-800 text-white font-semibold px-8 py-3 rounded-full transition">
-                            Close
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="/game.js"></script>
+    <div id="root"></div>
+    <script type="module" src="/game.js"></script>
 </body>
 </html>

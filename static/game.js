@@ -1,641 +1,559 @@
-let currentPuzzle = null;
-let gridData = Array(5).fill().map(() => Array(5).fill(''));
-let pluswordData = '';
-let startTime = null;
-let timerInterval = null;
-let currentMode = 'across'; // 'across' or 'down'
-let activeCell = { row: null, col: null };
-let prevActiveOnMouseDown = null;
-let modalKeyHandlerRef = null;
+import { h, render } from "https://esm.sh/preact";
+import { useState, useEffect, useRef } from "https://esm.sh/preact/hooks";
+import htm from "https://esm.sh/htm";
 
-// Initialize the game
-async function init() {
-  await loadPuzzle();
-  createGrid();
-  applyHints();
-  createPluswordInput();
-  setupEventListeners();
-  startTimer();
-}
+const html = htm.bind(h);
 
-function applyHints() {
-  // Clear existing hint classes
-  document.querySelectorAll('[data-row]').forEach(cell => {
-    cell.classList.remove('hint-yellow', 'hint-green');
-  });
+// Main App Component
+function App() {
+  const [puzzle, setPuzzle] = useState(null);
+  const [gridData, setGridData] = useState(Array(5).fill().map(() => Array(5).fill('')));
+  const [pluswordData, setPluswordData] = useState('');
+  const [startTime, setStartTime] = useState(null);
+  const [elapsed, setElapsed] = useState(0);
+  const [currentMode, setCurrentMode] = useState('across');
+  const [activeCell, setActiveCell] = useState({ row: null, col: null });
+  const [prevActiveOnMouseDown, setPrevActiveOnMouseDown] = useState(null);
+  const [modal, setModal] = useState({ visible: false, icon: '', title: '', message: '', timeStr: null });
+  const [copyButtonText, setCopyButtonText] = useState('Copy');
 
-  if (!currentPuzzle) return;
+  // Load puzzle on mount
+  useEffect(() => {
+    loadPuzzle();
+  }, []);
 
-  // Hints are provided per-word in across_words[].hints and down_words[].hints
-  // Apply across-word hints first
-  if (currentPuzzle.across_words && Array.isArray(currentPuzzle.across_words)) {
-    currentPuzzle.across_words.forEach((w) => {
-      const row = w.position;
-      if (!Array.isArray(w.hints)) return;
-      w.hints.forEach((hint, col) => {
-        if (!hint) return;
-        const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
-        if (!cell) return;
-        const v = String(hint).toLowerCase();
-        if (v.startsWith('g')) {
-          cell.classList.remove('hint-yellow');
-          cell.classList.add('hint-green');
-        } else if (v.startsWith('y')) {
-          // only add yellow if green not already set
-          if (!cell.classList.contains('hint-green')) cell.classList.add('hint-yellow');
-        }
-      });
-    });
-  }
-
-  // Then apply down-word hints (they may override across hints)
-  if (currentPuzzle.down_words && Array.isArray(currentPuzzle.down_words)) {
-    currentPuzzle.down_words.forEach((w) => {
-      const col = w.position;
-      if (!Array.isArray(w.hints)) return;
-      w.hints.forEach((hint, row) => {
-        if (!hint) return;
-        const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
-        if (!cell) return;
-        const v = String(hint).toLowerCase();
-        if (v.startsWith('g')) {
-          cell.classList.remove('hint-yellow');
-          cell.classList.add('hint-green');
-        } else if (v.startsWith('y')) {
-          if (!cell.classList.contains('hint-green')) cell.classList.add('hint-yellow');
-        }
-      });
-    });
-  }
-}
-
-function startTimer() {
-  startTime = Date.now();
-  timerInterval = setInterval(() => {
-    const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    const minutes = Math.floor(elapsed / 60);
-    const seconds = elapsed % 60;
-    document.getElementById('timer').textContent =
-      `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-  }, 1000);
-}
-
-async function loadPuzzle() {
-  try {
-    const response = await fetch('/api/puzzle/today');
-    if (!response.ok) {
-      throw new Error('Failed to load puzzle');
+  // Start timer
+  useEffect(() => {
+    if (!startTime) {
+      setStartTime(Date.now());
     }
-    currentPuzzle = await response.json();
-    displayClues();
-  } catch (error) {
-    console.error('Error loading puzzle:', error);
-    showModal('❌', 'Error', 'Failed to load puzzle. Please refresh the page.');
+    const interval = setInterval(() => {
+      if (startTime) {
+        setElapsed(Math.floor((Date.now() - startTime) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [startTime]);
+
+  async function loadPuzzle() {
+    try {
+      const response = await fetch('/api/puzzle/today');
+      if (!response.ok) throw new Error('Failed to load puzzle');
+      const data = await response.json();
+      setPuzzle(data);
+    } catch (error) {
+      console.error('Error loading puzzle:', error);
+      showModal('❌', 'Error', 'Failed to load puzzle. Please refresh the page.');
+    }
   }
+
+  function showModal(icon, title, message, timeStr = null) {
+    setModal({ visible: true, icon, title, message, timeStr });
+  }
+
+  function hideModal() {
+    setModal({ visible: false, icon: '', title: '', message: '', timeStr: null });
+    setCopyButtonText('Copy');
+  }
+
+  function handleCopy() {
+    if (modal.timeStr) {
+      const copyText = `I completed Quinta in ${modal.timeStr}`;
+      navigator.clipboard.writeText(copyText).then(() => {
+        setCopyButtonText('Copied!');
+        setTimeout(() => setCopyButtonText('Copy'), 2000);
+      }).catch(err => console.error('Failed to copy:', err));
+    }
+  }
+
+  function validatePuzzle() {
+    if (!puzzle) return false;
+
+    // Check across words
+    for (let row = 0; row < puzzle.across_words.length; row++) {
+      const across = puzzle.across_words[row];
+      for (let col = 0; col < across.word.length; col++) {
+        if (gridData[row][col].toUpperCase() !== across.word[col].toUpperCase()) {
+          return false;
+        }
+      }
+    }
+
+    // Check down words
+    for (let col = 0; col < puzzle.down_words.length; col++) {
+      const down = puzzle.down_words[col];
+      for (let row = 0; row < down.word.length; row++) {
+        if (gridData[row][col].toUpperCase() !== down.word[row].toUpperCase()) {
+          return false;
+        }
+      }
+    }
+
+    // Check plusword
+    if (pluswordData.toUpperCase() !== puzzle.plusword.toUpperCase()) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function checkIfComplete() {
+    const allGridFilled = gridData.every(row => row.every(cell => cell !== ''));
+    const pluswordFilled = pluswordData.length === 5;
+
+    if (allGridFilled && pluswordFilled) {
+      const success = validatePuzzle();
+
+      if (success) {
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = elapsed % 60;
+        const timeStr = `${minutes}:${String(seconds).padStart(2, '0')}`;
+        showModal('🎉', 'Congratulations!', `You solved the puzzle in ${timeStr}!`, timeStr);
+      } else {
+        showModal('❌', 'Not Quite!', 'At least one letter is wrong. Keep trying!');
+      }
+    }
+  }
+
+  function handleGridCellChange(row, col, value) {
+    const newGridData = gridData.map(r => [...r]);
+    newGridData[row][col] = value.toUpperCase();
+    setGridData(newGridData);
+  }
+
+  function handlePluswordChange(index, value) {
+    const cells = pluswordData.split('');
+    while (cells.length < 5) cells.push('');
+    cells[index] = value.toUpperCase();
+    setPluswordData(cells.join('').slice(0, 5));
+  }
+
+  const minutes = Math.floor(elapsed / 60);
+  const seconds = elapsed % 60;
+  const timerDisplay = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+  return html`
+    <div class="max-w-7xl mx-auto">
+      <${Header} puzzleNumber="1328" />
+
+      <main class="max-w-7xl mx-auto">
+        <div class="grid lg:grid-cols-2 gap-8 items-start">
+          <div class="flex flex-col items-center justify-center lg:justify-start">
+            <${CrosswordGrid}
+              gridData=${gridData}
+              puzzle=${puzzle}
+              currentMode=${currentMode}
+              activeCell=${activeCell}
+              onCellChange=${handleGridCellChange}
+              onCellFocus=${(row, col) => setActiveCell({ row, col })}
+              onCellClick=${(row, col) => {
+                if (prevActiveOnMouseDown && prevActiveOnMouseDown.row === row && prevActiveOnMouseDown.col === col) {
+                  setCurrentMode(currentMode === 'across' ? 'down' : 'across');
+                }
+                setPrevActiveOnMouseDown(null);
+                setActiveCell({ row, col });
+              }}
+              onMouseDown=${(row, col) => setPrevActiveOnMouseDown({ row, col })}
+              onComplete=${checkIfComplete}
+              setCurrentMode=${setCurrentMode}
+            />
+
+            <div class="w-full flex justify-center">
+              <div class="bg-gray-100 p-6 rounded-lg" style="width: min(90vw, 400px);">
+                <${PluswordInput}
+                  pluswordData=${pluswordData}
+                  onChange=${handlePluswordChange}
+                  onComplete=${checkIfComplete}
+                  onBlur=${() => setActiveCell({ row: null, col: null })}
+                />
+                <${SelectedClue} puzzle=${puzzle} activeCell=${activeCell} currentMode=${currentMode} />
+              </div>
+            </div>
+
+            <div class="mt-6 text-gray-600 font-mono text-xl">${timerDisplay}</div>
+          </div>
+
+          <${Clues} puzzle=${puzzle} onClueClick=${(orientation, position) => {
+            setCurrentMode(orientation);
+            if (orientation === 'across') {
+              setActiveCell({ row: position, col: 0 });
+            } else {
+              setActiveCell({ row: 0, col: position });
+            }
+          }} activeCell=${activeCell} currentMode=${currentMode} />
+        </div>
+      </main>
+
+      <${Modal}
+        visible=${modal.visible}
+        icon=${modal.icon}
+        title=${modal.title}
+        message=${modal.message}
+        timeStr=${modal.timeStr}
+        copyButtonText=${copyButtonText}
+        onClose=${hideModal}
+        onCopy=${handleCopy}
+      />
+    </div>
+  `;
 }
 
-function displayClues() {
-  const acrossClues = document.getElementById('across-clues');
-  const downClues = document.getElementById('down-clues');
-
-  acrossClues.innerHTML = '';
-  downClues.innerHTML = '';
-
-  currentPuzzle.across_words.forEach((wordData, index) => {
-    const clueDiv = document.createElement('div');
-    clueDiv.className = 'p-2 hover:bg-gray-100 rounded cursor-pointer';
-    clueDiv.dataset.position = wordData.position;
-    clueDiv.dataset.orientation = 'across';
-    clueDiv.innerHTML = `<span class="font-bold mr-2">${index + 1}.</span><span>${wordData.clue}</span>`;
-    clueDiv.addEventListener('click', () => {
-      // Focus the first cell of the across word (column 0)
-      const row = parseInt(wordData.position, 10);
-      const cell = document.querySelector(`[data-row="${row}"][data-col="0"]`);
-      if (cell) {
-        currentMode = 'across';
-        cell.focus();
-      }
-    });
-    acrossClues.appendChild(clueDiv);
-  });
-
-  currentPuzzle.down_words.forEach((wordData, index) => {
-    const clueDiv = document.createElement('div');
-    clueDiv.className = 'p-2 hover:bg-gray-100 rounded cursor-pointer';
-    clueDiv.dataset.position = wordData.position;
-    clueDiv.dataset.orientation = 'down';
-    clueDiv.innerHTML = `<span class="font-bold mr-2">${index + 1}.</span><span>${wordData.clue}</span>`;
-    clueDiv.addEventListener('click', () => {
-      // Focus the first cell of the down word (row 0)
-      const col = parseInt(wordData.position, 10);
-      const cell = document.querySelector(`[data-row="0"][data-col="${col}"]`);
-      if (cell) {
-        currentMode = 'down';
-        cell.focus();
-      }
-    });
-    downClues.appendChild(clueDiv);
-  });
+function Header({ puzzleNumber }) {
+  return html`
+    <header class="text-center py-6">
+      <div class="inline-block bg-gray-900 text-white px-8 py-3 rounded-lg mb-4">
+        <h1 class="text-2xl font-bold tracking-wider">QUINTA NO. ${puzzleNumber}</h1>
+      </div>
+    </header>
+  `;
 }
 
-function createGrid() {
-  const grid = document.getElementById('crossword-grid');
-  grid.innerHTML = '';
+function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange, onCellFocus, onCellClick, onMouseDown, onComplete, setCurrentMode }) {
+  const cellRefs = useRef({});
 
+  function getHintClass(row, col) {
+    if (!puzzle) return '';
+
+    let hint = null;
+
+    // Check across hints
+    if (puzzle.across_words && puzzle.across_words[row]) {
+      const acrossHint = puzzle.across_words[row].hints?.[col];
+      if (acrossHint) hint = acrossHint;
+    }
+
+    // Check down hints (may override)
+    if (puzzle.down_words && puzzle.down_words[col]) {
+      const downHint = puzzle.down_words[col].hints?.[row];
+      if (downHint) hint = downHint;
+    }
+
+    if (!hint) return '';
+    const hintStr = String(hint).toLowerCase();
+    if (hintStr.startsWith('g')) return 'hint-green';
+    if (hintStr.startsWith('y')) return 'hint-yellow';
+    return '';
+  }
+
+  function getBorderStyle(row, col) {
+    if (activeCell.row === null || activeCell.col === null) return {};
+
+    const style = {};
+
+    if (currentMode === 'across' && activeCell.row === row) {
+      style.borderTop = '3px solid black';
+      style.borderBottom = '3px solid black';
+      if (col === 0) style.borderLeft = '3px solid black';
+      if (col === 4) style.borderRight = '3px solid black';
+    } else if (currentMode === 'down' && activeCell.col === col) {
+      style.borderLeft = '3px solid black';
+      style.borderRight = '3px solid black';
+      if (row === 0) style.borderTop = '3px solid black';
+      if (row === 4) style.borderBottom = '3px solid black';
+    }
+
+    return style;
+  }
+
+  function handleKeyDown(e, row, col) {
+    if (e.key.length === 1 && e.key.match(/[a-zA-Z]/)) {
+      e.preventDefault();
+      onCellChange(row, col, e.key);
+
+      // Auto-advance
+      if (currentMode === 'across') {
+        if (col < 4) {
+          const key = `${row}-${col + 1}`;
+          cellRefs.current[key]?.focus();
+        } else if (row < 4) {
+          const key = `${row + 1}-0`;
+          cellRefs.current[key]?.focus();
+        }
+      } else {
+        if (row < 4) {
+          const key = `${row + 1}-${col}`;
+          cellRefs.current[key]?.focus();
+        } else if (col < 4) {
+          const key = `0-${col + 1}`;
+          cellRefs.current[key]?.focus();
+        }
+      }
+
+      setTimeout(onComplete, 0);
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowRight':
+        if (col < 4) {
+          e.preventDefault();
+          setCurrentMode('across');
+          cellRefs.current[`${row}-${col + 1}`]?.focus();
+        }
+        break;
+      case 'ArrowLeft':
+        if (col > 0) {
+          e.preventDefault();
+          setCurrentMode('across');
+          cellRefs.current[`${row}-${col - 1}`]?.focus();
+        }
+        break;
+      case 'ArrowDown':
+        if (row < 4) {
+          e.preventDefault();
+          setCurrentMode('down');
+          cellRefs.current[`${row + 1}-${col}`]?.focus();
+        }
+        break;
+      case 'ArrowUp':
+        if (row > 0) {
+          e.preventDefault();
+          setCurrentMode('down');
+          cellRefs.current[`${row - 1}-${col}`]?.focus();
+        }
+        break;
+      case 'Backspace':
+        e.preventDefault();
+        onCellChange(row, col, '');
+
+        if (currentMode === 'across') {
+          if (col > 0) {
+            cellRefs.current[`${row}-${col - 1}`]?.focus();
+          } else if (row > 0) {
+            const prevCell = cellRefs.current[`${row - 1}-4`];
+            if (prevCell) {
+              onCellChange(row - 1, 4, '');
+              prevCell.focus();
+            }
+          }
+        } else {
+          if (row > 0) {
+            cellRefs.current[`${row - 1}-${col}`]?.focus();
+          } else if (col > 0) {
+            const prevCell = cellRefs.current[`4-${col - 1}`];
+            if (prevCell) {
+              onCellChange(4, col - 1, '');
+              prevCell.focus();
+            }
+          }
+        }
+        break;
+    }
+  }
+
+  const cells = [];
   for (let row = 0; row < 5; row++) {
     for (let col = 0; col < 5; col++) {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'cell-wrapper relative';
+      const key = `${row}-${col}`;
+      const hintClass = getHintClass(row, col);
+      const borderStyle = getBorderStyle(row, col);
+      const isActive = activeCell.row === row && activeCell.col === col;
 
-      // Add cell number for first cell of each row/column
-      if (col === 0) {
-        const number = document.createElement('div');
-        number.className = 'cell-number';
-        number.textContent = row + 1;
-        wrapper.appendChild(number);
-      }
-      if (row === 0 && col > 0) {
-        const number = document.createElement('div');
-        number.className = 'cell-number';
-        number.textContent = col + 1;
-        wrapper.appendChild(number);
-      }
-
-      const cell = document.createElement('input');
-      cell.type = 'text';
-      cell.maxLength = 1;
-      cell.className = 'w-20 h-20 text-center text-3xl font-bold uppercase bg-white border border-black focus:outline-none';
-      cell.style.caretColor = 'transparent'; // Hide cursor
-      cell.dataset.row = row;
-      cell.dataset.col = col;
-
-      cell.addEventListener('keydown', (e) => handleKeyDown(e, row, col));
-      cell.addEventListener('focus', (e) => handleCellFocus(e, row, col));
-      cell.addEventListener('click', (e) => handleCellClick(e, row, col));
-      cell.addEventListener('mousedown', (e) => {
-        // Capture previous active cell before focus changes
-        prevActiveOnMouseDown = { row: activeCell.row, col: activeCell.col };
-        // Allow focus so keyboard works
-        cell.focus();
-        // Prevent text selection and drag-selection across cells
-        e.preventDefault();
-      });
-      cell.addEventListener('touchstart', (e) => {
-        // Required for iOS Safari — touch doesn't automatically focus inputs
-        cell.focus();
-        e.preventDefault();
-      });
-      cell.addEventListener('touchend', (e) => e.preventDefault());
-
-      wrapper.appendChild(cell);
-      grid.appendChild(wrapper);
+      cells.push(html`
+        <div class="cell-wrapper relative" key=${key}>
+          ${col === 0 && html`<div class="cell-number">${row + 1}</div>`}
+          ${row === 0 && col > 0 && html`<div class="cell-number">${col + 1}</div>`}
+          <input
+            ref=${el => cellRefs.current[key] = el}
+            type="text"
+            maxLength="1"
+            value=${gridData[row][col]}
+            class="w-full h-full text-center text-2xl md:text-3xl font-bold uppercase bg-white border border-black focus:outline-none ${hintClass} ${isActive ? 'hatch' : ''}"
+            style=${{ caretColor: 'transparent', ...borderStyle }}
+            data-row=${row}
+            data-col=${col}
+            onKeyDown=${(e) => handleKeyDown(e, row, col)}
+            onFocus=${() => onCellFocus(row, col)}
+            onClick=${() => onCellClick(row, col)}
+            onMouseDown=${() => onMouseDown(row, col)}
+            onTouchStart=${(e) => { e.preventDefault(); cellRefs.current[key]?.focus(); }}
+          />
+        </div>
+      `);
     }
   }
+
+  return html`
+    <div class="crossword-grid inline-grid grid-cols-5 gap-0 border-2 border-black mb-8">
+      ${cells}
+    </div>
+  `;
 }
 
-function createPluswordInput() {
-  const pluswordGrid = document.getElementById('plusword-grid');
-  pluswordGrid.innerHTML = '';
+function PluswordInput({ pluswordData, onChange, onComplete, onBlur }) {
+  const cellRefs = useRef([]);
 
-  for (let i = 0; i < 5; i++) {
-    const cell = document.createElement('input');
-    cell.type = 'text';
-    cell.maxLength = 1;
-    cell.className = 'w-20 h-20 text-center text-3xl font-bold uppercase bg-white border border-black focus:outline-none';
-    cell.style.caretColor = 'transparent';
-    cell.dataset.pluswordIndex = i;
-    cell.addEventListener('input', (e) => handlePluswordInput(e, i));
-    cell.addEventListener('keydown', (e) => handlePluswordKeyDown(e, i));
-    cell.addEventListener('focus', (e) => {
-      // keep caret hidden and avoid selection highlighting
-      e.target.select();
-      // When focusing plusword, ensure any focused grid cell loses focus and highlight
-      if (activeCell && activeCell.row !== null && activeCell.col !== null) {
-        const prevGridCell = document.querySelector(`[data-row="${activeCell.row}"][data-col="${activeCell.col}"]`);
-        if (prevGridCell) prevGridCell.blur();
-        activeCell = { row: null, col: null };
-        highlightActiveWord();
-      }
-    });
-    pluswordGrid.appendChild(cell);
-  }
-}
-
-
-function handlePluswordInput(e, index) {
-  const key = e.data || e.target.value; // data is available on input events for single char
-  const value = (key || e.target.value).toUpperCase();
-  e.target.value = value;
-
-  // Update plusword data
-  const cells = document.querySelectorAll('[data-plusword-index]');
-  pluswordData = Array.from(cells).map(c => c.value).join('');
-
-  // Clear highlighting
-  e.target.classList.remove('bg-red-200', 'bg-green-200');
-
-  // Auto-advance
-  if (value && index < 4) {
-    const nextCell = document.querySelector(`[data-plusword-index="${index + 1}"]`);
-    if (nextCell) nextCell.focus();
-  }
-
-  checkIfComplete();
-}
-
-function handleKeyDown(e, row, col) {
-  // Handle letter input
-  if (e.key.length === 1 && e.key.match(/[a-zA-Z]/)) {
-    e.preventDefault();
-    const value = e.key.toUpperCase();
-    e.target.value = value;
-    gridData[row][col] = value;
-
-    // Clear any error/correct highlighting
-    e.target.classList.remove('bg-red-200', 'bg-green-200');
-
-    // Auto-advance based on current mode
-    if (currentMode === 'across') {
-      // Move right in the same row
-      if (col < 4) {
-        const nextCell = document.querySelector(`[data-row="${row}"][data-col="${col + 1}"]`);
-        if (nextCell) nextCell.focus();
-      } else if (row < 4) {
-        // At end of row, move to start of next row
-        const nextCell = document.querySelector(`[data-row="${row + 1}"][data-col="0"]`);
-        if (nextCell) nextCell.focus();
-      }
-    } else {
-      // Move down in the same column
-      if (row < 4) {
-        const nextCell = document.querySelector(`[data-row="${row + 1}"][data-col="${col}"]`);
-        if (nextCell) nextCell.focus();
-      } else if (col < 4) {
-        // At end of column, move to top of next column
-        const nextCell = document.querySelector(`[data-row="0"][data-col="${col + 1}"]`);
-        if (nextCell) nextCell.focus();
-      }
-    }
-
-    // If this was the very last grid cell, move focus to the first plusword cell
-    if (row === 4 && col === 4) {
-      const firstPlus = document.querySelector('[data-plusword-index="0"]');
-      if (firstPlus) firstPlus.focus();
-    }
-
-    checkIfComplete();
-    return;
-  }
-
-  // Handle arrow keys
-  switch (e.key) {
-    case 'ArrowRight':
-      if (col < 4) {
-        e.preventDefault();
-        currentMode = 'across';
-        document.querySelector(`[data-row="${row}"][data-col="${col + 1}"]`).focus();
-      }
-      break;
-    case 'ArrowLeft':
-      if (col > 0) {
-        e.preventDefault();
-        currentMode = 'across';
-        document.querySelector(`[data-row="${row}"][data-col="${col - 1}"]`).focus();
-      }
-      break;
-    case 'ArrowDown':
-      if (row < 4) {
-        e.preventDefault();
-        currentMode = 'down';
-        document.querySelector(`[data-row="${row + 1}"][data-col="${col}"]`).focus();
-      }
-      break;
-    case 'ArrowUp':
-      if (row > 0) {
-        e.preventDefault();
-        currentMode = 'down';
-        document.querySelector(`[data-row="${row - 1}"][data-col="${col}"]`).focus();
-      }
-      break;
-    case 'Backspace':
+  function handleKeyDown(e, index) {
+    if (e.key.length === 1 && e.key.match(/[a-zA-Z]/)) {
       e.preventDefault();
-      // Delete current cell
-      e.target.value = '';
-      gridData[row][col] = '';
-
-      if (currentMode === 'across') {
-        // Move left in across mode, or wrap to end of previous row
-        if (col > 0) {
-          const prevCell = document.querySelector(`[data-row="${row}"][data-col="${col - 1}"]`);
-          if (prevCell) prevCell.focus();
-        } else if (row > 0) {
-          const prevCell = document.querySelector(`[data-row="${row - 1}"][data-col="4"]`);
-          if (prevCell) {
-            prevCell.value = '';
-            gridData[row - 1][4] = '';
-            prevCell.focus();
-          }
-        }
-      } else {
-        // Move up in down mode, or wrap to end of previous column
-        if (row > 0) {
-          const prevCell = document.querySelector(`[data-row="${row - 1}"][data-col="${col}"]`);
-          if (prevCell) prevCell.focus();
-        } else if (col > 0) {
-          const prevCell = document.querySelector(`[data-row="4"][data-col="${col - 1}"]`);
-          if (prevCell) {
-            prevCell.value = '';
-            gridData[4][col - 1] = '';
-            prevCell.focus();
-          }
-        }
-      }
-      break;
-  }
-}
-
-function handlePluswordKeyDown(e, index) {
-  // Handle letters similar to grid cells
-  if (e.key.length === 1 && e.key.match(/[a-zA-Z]/)) {
-    e.preventDefault();
-    const value = e.key.toUpperCase();
-    e.target.value = value;
-    // update data
-    const cells = document.querySelectorAll('[data-plusword-index]');
-    pluswordData = Array.from(cells).map(c => c.value).join('');
-    e.target.classList.remove('bg-red-200', 'bg-green-200');
-    if (index < 4) {
-      const next = document.querySelector(`[data-plusword-index="${index + 1}"]`);
-      if (next) next.focus();
-    }
-    checkIfComplete();
-    return;
-  }
-
-  switch (e.key) {
-    case 'ArrowRight':
+      onChange(index, e.key);
       if (index < 4) {
+        cellRefs.current[index + 1]?.focus();
+      }
+      setTimeout(onComplete, 0);
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowRight':
+        if (index < 4) {
+          e.preventDefault();
+          cellRefs.current[index + 1]?.focus();
+        }
+        break;
+      case 'ArrowLeft':
+        if (index > 0) {
+          e.preventDefault();
+          cellRefs.current[index - 1]?.focus();
+        }
+        break;
+      case 'Backspace':
         e.preventDefault();
-        document.querySelector(`[data-plusword-index="${index + 1}"]`).focus();
-      }
-      break;
-    case 'ArrowLeft':
-      if (index > 0) {
-        e.preventDefault();
-        document.querySelector(`[data-plusword-index="${index - 1}"]`).focus();
-      }
-      break;
-    case 'Backspace':
-      // If empty and not first, move to previous plusword cell
-      if (!e.target.value && index > 0) {
-        e.preventDefault();
-        const prevCell = document.querySelector(`[data-plusword-index="${index - 1}"]`);
-        if (prevCell) {
-          prevCell.focus();
-          prevCell.value = '';
+        const currentValue = pluswordData[index] || '';
+        if (!currentValue && index > 0) {
+          onChange(index - 1, '');
+          cellRefs.current[index - 1]?.focus();
+        } else {
+          onChange(index, '');
         }
-        // Update plusword data
-        const cells = document.querySelectorAll('[data-plusword-index]');
-        pluswordData = Array.from(cells).map(c => c.value).join('');
-      } else if (!e.target.value && index === 0) {
-        // Move back into the grid: focus last grid cell
-        e.preventDefault();
-        const lastGrid = document.querySelector('[data-row="4"][data-col="4"]');
-        if (lastGrid) {
-          lastGrid.focus();
-          lastGrid.value = '';
-          gridData[4][4] = '';
-        }
-      } else {
-        // If there is content, clear it
-        e.target.value = '';
-        const cells = document.querySelectorAll('[data-plusword-index]');
-        pluswordData = Array.from(cells).map(c => c.value).join('');
-      }
-      break;
+        break;
+    }
   }
+
+  const cells = [];
+  for (let i = 0; i < 5; i++) {
+    cells.push(html`
+      <input
+        key=${i}
+        ref=${el => cellRefs.current[i] = el}
+        type="text"
+        maxLength="1"
+        value=${pluswordData[i] || ''}
+        class="w-20 h-20 text-center text-3xl font-bold uppercase bg-white border border-black focus:outline-none"
+        style=${{ caretColor: 'transparent' }}
+        data-plusword-index=${i}
+        onKeyDown=${(e) => handleKeyDown(e, i)}
+        onFocus=${onBlur}
+      />
+    `);
+  }
+
+  return html`
+    <div class="plusword-grid flex justify-center gap-1">
+      ${cells}
+    </div>
+  `;
 }
 
-function checkIfComplete() {
-  const allGridFilled = gridData.every(row => row.every(cell => cell !== ''));
-  const pluswordFilled = pluswordData.length === 5;
-
-  if (allGridFilled && pluswordFilled) {
-    const success = validatePuzzle();
-
-    if (success) {
-      clearInterval(timerInterval);
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      const minutes = Math.floor(elapsed / 60);
-      const seconds = elapsed % 60;
-      const timeStr = `${minutes}:${String(seconds).padStart(2, '0')}`;
-      showModal('🎉', 'Congratulations!', `You solved the puzzle in ${timeStr}!`, timeStr);
-    } else {
-      showModal('❌', 'Not Quite!', 'At least one letter is wrong. Keep trying!');
-    }
+function SelectedClue({ puzzle, activeCell, currentMode }) {
+  if (!puzzle || activeCell.row === null || activeCell.col === null) {
+    return html`<p class="text-lg font-semibold text-gray-800 mt-4 text-center"></p>`;
   }
+
+  let clueText = '';
+  if (currentMode === 'across' && puzzle.across_words?.[activeCell.row]) {
+    clueText = `${activeCell.row + 1}. ${puzzle.across_words[activeCell.row].clue}`;
+  } else if (currentMode === 'down' && puzzle.down_words?.[activeCell.col]) {
+    clueText = `${activeCell.col + 1}. ${puzzle.down_words[activeCell.col].clue}`;
+  }
+
+  return html`
+    <p class="text-lg font-semibold text-gray-800 mt-4 text-center">${clueText}</p>
+  `;
 }
 
-function validatePuzzle() {
-  if (!currentPuzzle) {
-    throw new Error('No puzzle loaded');
-  }
+function Clues({ puzzle, onClueClick, activeCell, currentMode }) {
+  if (!puzzle) return null;
 
-  // Check across words (rows)
-  for (let row = 0; row < currentPuzzle.across_words.length; row++) {
-    const across = currentPuzzle.across_words[row];
-    for (let col = 0; col < across.word.length; col++) {
-      const expectedChar = across.word[col].toUpperCase();
-      const actual = (gridData[row][col] || '').toUpperCase();
-      if (actual !== expectedChar) return false;
-    }
-  }
-
-  for (let col = 0; col < currentPuzzle.down_words.length; col++) {
-    const down = currentPuzzle.down_words[col];
-    for (let row = 0; row < down.word.length; row++) {
-      const expectedChar = down.word[row].toUpperCase();
-      const actual = (gridData[row][col] || '').toUpperCase();
-      if (actual !== expectedChar) {
-        return false;
-      }
-    }
-  }
-
-  // Check plusword
-  const pluswordSolution = currentPuzzle.plusword || '';
-  if (pluswordData.toUpperCase() !== pluswordSolution.toUpperCase()) {
-    return false;
-  }
-  return true;
+  return html`
+    <div class="space-y-6 hidden lg:block">
+      <div>
+        <h2 class="text-2xl font-bold mb-4">Across</h2>
+        <div class="space-y-2">
+          ${puzzle.across_words.map((wordData, index) => {
+            const isActive = currentMode === 'across' && activeCell.row === wordData.position;
+            return html`
+              <div
+                key=${index}
+                class="p-2 hover:bg-gray-100 rounded cursor-pointer ${isActive ? 'bg-blue-200 font-bold' : ''}"
+                onClick=${() => onClueClick('across', wordData.position)}
+              >
+                <span class="font-bold mr-2">${index + 1}.</span>
+                <span>${wordData.clue}</span>
+              </div>
+            `;
+          })}
+        </div>
+      </div>
+      <div>
+        <h2 class="text-2xl font-bold mb-4">Down</h2>
+        <div class="space-y-2">
+          ${puzzle.down_words.map((wordData, index) => {
+            const isActive = currentMode === 'down' && activeCell.col === wordData.position;
+            return html`
+              <div
+                key=${index}
+                class="p-2 hover:bg-gray-100 rounded cursor-pointer ${isActive ? 'bg-blue-200 font-bold' : ''}"
+                onClick=${() => onClueClick('down', wordData.position)}
+              >
+                <span class="font-bold mr-2">${index + 1}.</span>
+                <span>${wordData.clue}</span>
+              </div>
+            `;
+          })}
+        </div>
+      </div>
+    </div>
+  `;
 }
 
-function handleCellFocus(e, row, col) {
-  activeCell = { row, col };
-  highlightActiveWord();
-}
+function Modal({ visible, icon, title, message, timeStr, copyButtonText, onClose, onCopy }) {
+  useEffect(() => {
+    if (!visible) return;
 
-function handleCellClick(e, row, col) {
-  // Toggle mode only if the cell was already active before this click (mouse-down)
-  if (prevActiveOnMouseDown && prevActiveOnMouseDown.row === row && prevActiveOnMouseDown.col === col) {
-    currentMode = currentMode === 'across' ? 'down' : 'across';
-  }
-  prevActiveOnMouseDown = null;
-  // Update active cell and highlight (keeping current mode if it's a new cell)
-  activeCell = { row, col };
-  highlightActiveWord();
-}
-
-function highlightActiveWord() {
-  // Remove all highlights (but preserve hint classes)
-  document.querySelectorAll('[data-row]').forEach(cell => {
-    cell.style.boxShadow = '';
-    cell.style.borderTop = '';
-    cell.style.borderBottom = '';
-    cell.style.borderLeft = '';
-    cell.style.borderRight = '';
-  });
-  document.querySelectorAll('#across-clues > div, #down-clues > div').forEach(clue => {
-    clue.classList.remove('bg-blue-200', 'font-bold');
-  });
-
-  const selectedClueEl = document.getElementById('selected-clue');
-  if (activeCell.row === null || activeCell.col === null) {
-    if (selectedClueEl) selectedClueEl.textContent = '';
-    return;
-  }
-
-  if (currentMode === 'across') {
-    // Highlight the entire row with thicker borders
-    for (let col = 0; col < 5; col++) {
-      const cell = document.querySelector(`[data-row="${activeCell.row}"][data-col="${col}"]`);
-      if (cell) {
-        // Top and bottom borders for all cells in row
-        cell.style.borderTop = '3px solid black';
-        cell.style.borderBottom = '3px solid black';
-        // Left border for first cell
-        if (col === 0) {
-          cell.style.borderLeft = '3px solid black';
-        }
-        // Right border for last cell
-        if (col === 4) {
-          cell.style.borderRight = '3px solid black';
-        }
-      }
-    }
-    // Highlight the corresponding across clue and update selected clue display
-    const clueIndex = activeCell.row;
-    const clueElement = document.querySelector(`#across-clues > div:nth-child(${clueIndex + 1})`);
-    if (clueElement) {
-      clueElement.classList.add('bg-blue-200', 'font-bold');
-      clueElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-    if (selectedClueEl && currentPuzzle && currentPuzzle.across_words && currentPuzzle.across_words[clueIndex]) {
-      selectedClueEl.textContent = (clueIndex + 1) + '. ' + currentPuzzle.across_words[clueIndex].clue;
-    }
-  } else {
-    // Highlight the entire column with thicker borders
-    for (let row = 0; row < 5; row++) {
-      const cell = document.querySelector(`[data-row="${row}"][data-col="${activeCell.col}"]`);
-      if (cell) {
-        // Left and right borders for all cells in column
-        cell.style.borderLeft = '3px solid black';
-        cell.style.borderRight = '3px solid black';
-        // Top border for first cell
-        if (row === 0) {
-          cell.style.borderTop = '3px solid black';
-        }
-        // Bottom border for last cell
-        if (row === 4) {
-          cell.style.borderBottom = '3px solid black';
-        }
-      }
-    }
-    // Highlight the corresponding down clue and update selected clue display
-    const clueIndex = activeCell.col;
-    const clueElement = document.querySelector(`#down-clues > div:nth-child(${clueIndex + 1})`);
-    if (clueElement) {
-      clueElement.classList.add('bg-blue-200', 'font-bold');
-      clueElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-    if (selectedClueEl && currentPuzzle && currentPuzzle.down_words && currentPuzzle.down_words[clueIndex]) {
-      selectedClueEl.textContent = (clueIndex + 1) + '. ' + currentPuzzle.down_words[clueIndex].clue;
-    }
-  }
-  highlightCurrentCell();
-}
-
-function highlightCurrentCell() {
-  const allCells = document.querySelectorAll('[data-row][data-col]');
-  const currentCell = document.querySelector(
-    `[data-row="${activeCell.row}"][data-col="${activeCell.col}"]`
-  );
-  allCells.forEach(c => c.classList.remove('hatch'));
-  currentCell.classList.add('hatch');
-}
-
-function showModal(icon, title, message, timeStr = null) {
-  document.getElementById('modal-icon').textContent = icon;
-  document.getElementById('modal-title').textContent = title;
-  document.getElementById('modal-message').textContent = message;
-
-  const copyButton = document.getElementById('modal-copy');
-
-  // Show copy button only for victory modal (when timeStr is provided)
-  if (timeStr) {
-    copyButton.classList.remove('hidden');
-    copyButton.onclick = () => {
-      const copyText = `I completed Quinta in ${timeStr}`;
-      navigator.clipboard.writeText(copyText).then(() => {
-        // Change button text temporarily to show feedback
-        const originalText = copyButton.textContent;
-        copyButton.textContent = 'Copied!';
-        setTimeout(() => {
-          copyButton.textContent = originalText;
-        }, 2000);
-      }).catch(err => {
-        console.error('Failed to copy:', err);
-      });
+    const handleKeyOrClick = (e) => {
+      onClose();
     };
-  } else {
-    copyButton.classList.add('hidden');
-  }
 
-  const modal = document.getElementById('result-modal');
-  modal.classList.remove('hidden');
-  // ensure modal is visible even if Tailwind classes are changed; force display
-  modal.style.display = 'flex';
-  // Close modal on any key press or any click (capture-phase so inputs/buttons don't intercept)
-  modalKeyHandlerRef = function(e) {
-    hideModal();
-  };
-  window.addEventListener('keydown', modalKeyHandlerRef, { capture: true });
-  window.addEventListener('keypress', modalKeyHandlerRef, { capture: true });
-  window.addEventListener('click', modalKeyHandlerRef, { capture: true });
+    window.addEventListener('keydown', handleKeyOrClick, { capture: true });
+    window.addEventListener('click', handleKeyOrClick, { capture: true });
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyOrClick, { capture: true });
+      window.removeEventListener('click', handleKeyOrClick, { capture: true });
+    };
+  }, [visible, onClose]);
+
+  if (!visible) return null;
+
+  return html`
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style="display: flex;">
+      <div class="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+        <div class="text-center">
+          <div class="text-6xl mb-4">${icon}</div>
+          <h2 class="text-2xl font-bold mb-2">${title}</h2>
+          <p class="text-gray-600 mb-6">${message}</p>
+          <div class="flex gap-3 justify-center">
+            ${timeStr && html`
+              <button
+                class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-3 rounded-full transition"
+                onClick=${(e) => { e.stopPropagation(); onCopy(); }}
+              >
+                ${copyButtonText}
+              </button>
+            `}
+            <button
+              class="bg-gray-900 hover:bg-gray-800 text-white font-semibold px-8 py-3 rounded-full transition"
+              onClick=${onClose}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
-function hideModal() {
-  document.getElementById('result-modal').classList.add('hidden');
-  const modal = document.getElementById('result-modal');
-  modal.style.display = '';
-  if (modalKeyHandlerRef) {
-    window.removeEventListener('keydown', modalKeyHandlerRef, { capture: true });
-    window.removeEventListener('keypress', modalKeyHandlerRef, { capture: true });
-    window.removeEventListener('click', modalKeyHandlerRef, { capture: true });
-    modalKeyHandlerRef = null;
-  }
-}
-
-function setupEventListeners() {
-  document.getElementById('modal-close').addEventListener('click', hideModal);
-
-  // Close modal on background click
-  document.getElementById('result-modal').addEventListener('click', (e) => {
-    if (e.target.id === 'result-modal') {
-      hideModal();
-    }
-  });
-}
-
-// Start the game when page loads
-init();
+// Render the app
+render(html`<${App} />`, document.getElementById('root'));
