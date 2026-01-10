@@ -13,6 +13,7 @@ function App() {
   const [elapsed, setElapsed] = useState(0);
   const [currentMode, setCurrentMode] = useState('across');
   const [activeCell, setActiveCell] = useState({ row: null, col: null });
+  const [activePluswordIndex, setActivePluswordIndex] = useState(null);
   const [prevActiveOnMouseDown, setPrevActiveOnMouseDown] = useState(null);
   const [modal, setModal] = useState({ visible: false, icon: '', title: '', message: '', timeStr: null });
   const [copyButtonText, setCopyButtonText] = useState('Copy');
@@ -101,6 +102,8 @@ function App() {
     const allGridFilled = gridData.every(row => row.every(cell => cell !== ''));
     const pluswordFilled = pluswordData.length === 5;
 
+    console.log(allGridFilled, pluswordData)
+
     if (allGridFilled && pluswordFilled) {
       const success = validatePuzzle();
 
@@ -121,11 +124,59 @@ function App() {
     setGridData(newGridData);
   }
 
-  function handlePluswordChange(index, value) {
+  function handlePluswordChange(index, value, shouldCheckComplete = false) {
     const cells = pluswordData.split('');
     while (cells.length < 5) cells.push('');
     cells[index] = value.toUpperCase();
-    setPluswordData(cells.join('').slice(0, 5));
+    const newPluswordData = cells.join('').slice(0, 5);
+    setPluswordData(newPluswordData);
+
+    // If we should check complete, do it with the new value
+    if (shouldCheckComplete) {
+      setTimeout(() => {
+        const allGridFilled = gridData.every(row => row.every(cell => cell !== ''));
+        const pluswordFilled = newPluswordData.length === 5;
+
+        if (allGridFilled && pluswordFilled) {
+          // Validate using the new plusword data
+          if (!puzzle) return;
+
+          // Check across words
+          for (let row = 0; row < puzzle.across_words.length; row++) {
+            const across = puzzle.across_words[row];
+            for (let col = 0; col < across.word.length; col++) {
+              if (gridData[row][col].toUpperCase() !== across.word[col].toUpperCase()) {
+                showModal('❌', 'Not Quite!', 'At least one letter is wrong. Keep trying!');
+                return;
+              }
+            }
+          }
+
+          // Check down words
+          for (let col = 0; col < puzzle.down_words.length; col++) {
+            const down = puzzle.down_words[col];
+            for (let row = 0; row < down.word.length; row++) {
+              if (gridData[row][col].toUpperCase() !== down.word[row].toUpperCase()) {
+                showModal('❌', 'Not Quite!', 'At least one letter is wrong. Keep trying!');
+                return;
+              }
+            }
+          }
+
+          // Check plusword with new data
+          if (newPluswordData.toUpperCase() !== puzzle.plusword.toUpperCase()) {
+            showModal('❌', 'Not Quite!', 'At least one letter is wrong. Keep trying!');
+            return;
+          }
+
+          // Success!
+          const minutes = Math.floor(elapsed / 60);
+          const seconds = elapsed % 60;
+          const timeStr = `${minutes}:${String(seconds).padStart(2, '0')}`;
+          showModal('🎉', 'Congratulations!', `You solved the puzzle in ${timeStr}!`, timeStr);
+        }
+      }, 0);
+    }
   }
 
   const minutes = Math.floor(elapsed / 60);
@@ -137,34 +188,40 @@ function App() {
       <${Header} puzzleNumber="1328" />
 
       <main class="max-w-7xl mx-auto">
-        <div class="grid lg:grid-cols-2 gap-8 items-start">
-          <div class="flex flex-col items-center justify-center lg:justify-start">
+        <div class="grid md:grid-cols-2 gap-8 items-start">
+          <div class="flex flex-col items-center justify-center md:justify-start">
             <${CrosswordGrid}
               gridData=${gridData}
               puzzle=${puzzle}
               currentMode=${currentMode}
               activeCell=${activeCell}
               onCellChange=${handleGridCellChange}
-              onCellFocus=${(row, col) => setActiveCell({ row, col })}
-              onCellClick=${(row, col) => {
-                if (prevActiveOnMouseDown && prevActiveOnMouseDown.row === row && prevActiveOnMouseDown.col === col) {
-                  setCurrentMode(currentMode === 'across' ? 'down' : 'across');
-                }
-                setPrevActiveOnMouseDown(null);
+              onCellFocus=${(row, col) => {
                 setActiveCell({ row, col });
+                setActivePluswordIndex(null);
               }}
-              onMouseDown=${(row, col) => setPrevActiveOnMouseDown({ row, col })}
+              onCellClick=${(row, col) => {
+      if (prevActiveOnMouseDown && prevActiveOnMouseDown.row === row && prevActiveOnMouseDown.col === col) {
+        setCurrentMode(currentMode === 'across' ? 'down' : 'across');
+      }
+      setPrevActiveOnMouseDown({ row, col });
+      setActiveCell({ row, col });
+      setActivePluswordIndex(null);
+    }}
               onComplete=${checkIfComplete}
               setCurrentMode=${setCurrentMode}
             />
 
             <div class="w-full flex justify-center">
-              <div class="bg-gray-100 p-6 rounded-lg" style="width: min(90vw, 400px);">
+              <div class="bg-gray-100 rounded-lg" style="width: min(90vw, 400px);">
                 <${PluswordInput}
                   pluswordData=${pluswordData}
                   onChange=${handlePluswordChange}
-                  onComplete=${checkIfComplete}
-                  onBlur=${() => setActiveCell({ row: null, col: null })}
+                  activePluswordIndex=${activePluswordIndex}
+                  onFocus=${(index) => {
+                    setActivePluswordIndex(index);
+                    setActiveCell({ row: null, col: null });
+                  }}
                 />
                 <${SelectedClue} puzzle=${puzzle} activeCell=${activeCell} currentMode=${currentMode} />
               </div>
@@ -174,13 +231,13 @@ function App() {
           </div>
 
           <${Clues} puzzle=${puzzle} onClueClick=${(orientation, position) => {
-            setCurrentMode(orientation);
-            if (orientation === 'across') {
-              setActiveCell({ row: position, col: 0 });
-            } else {
-              setActiveCell({ row: 0, col: position });
-            }
-          }} activeCell=${activeCell} currentMode=${currentMode} />
+      setCurrentMode(orientation);
+      if (orientation === 'across') {
+        setActiveCell({ row: position, col: 0 });
+      } else {
+        setActiveCell({ row: 0, col: position });
+      }
+    }} activeCell=${activeCell} currentMode=${currentMode} />
         </div>
       </main>
 
@@ -208,7 +265,7 @@ function Header({ puzzleNumber }) {
   `;
 }
 
-function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange, onCellFocus, onCellClick, onMouseDown, onComplete, setCurrentMode }) {
+function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange, onCellFocus, onCellClick, onComplete, setCurrentMode }) {
   const cellRefs = useRef({});
 
   function getHintClass(row, col) {
@@ -365,7 +422,6 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
             onKeyDown=${(e) => handleKeyDown(e, row, col)}
             onFocus=${() => onCellFocus(row, col)}
             onClick=${() => onCellClick(row, col)}
-            onMouseDown=${() => onMouseDown(row, col)}
             onTouchStart=${(e) => { e.preventDefault(); cellRefs.current[key]?.focus(); }}
           />
         </div>
@@ -380,17 +436,17 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
   `;
 }
 
-function PluswordInput({ pluswordData, onChange, onComplete, onBlur }) {
+function PluswordInput({ pluswordData, onChange, activePluswordIndex, onFocus }) {
   const cellRefs = useRef([]);
 
   function handleKeyDown(e, index) {
     if (e.key.length === 1 && e.key.match(/[a-zA-Z]/)) {
       e.preventDefault();
-      onChange(index, e.key);
+      const shouldCheck = index === 4; // Check if complete when entering last cell
+      onChange(index, e.key, shouldCheck);
       if (index < 4) {
         cellRefs.current[index + 1]?.focus();
       }
-      setTimeout(onComplete, 0);
       return;
     }
 
@@ -420,8 +476,24 @@ function PluswordInput({ pluswordData, onChange, onComplete, onBlur }) {
     }
   }
 
+  function getBorderStyle(index) {
+    if (activePluswordIndex === null) return {};
+
+    const style = {};
+    // Apply thicker border to all cells in plusword when any is active
+    style.borderTop = '3px solid black';
+    style.borderBottom = '3px solid black';
+    if (index === 0) style.borderLeft = '3px solid black';
+    if (index === 4) style.borderRight = '3px solid black';
+
+    return style;
+  }
+
   const cells = [];
   for (let i = 0; i < 5; i++) {
+    const borderStyle = getBorderStyle(i);
+    const isActive = activePluswordIndex === i;
+
     cells.push(html`
       <input
         key=${i}
@@ -429,17 +501,17 @@ function PluswordInput({ pluswordData, onChange, onComplete, onBlur }) {
         type="text"
         maxLength="1"
         value=${pluswordData[i] || ''}
-        class="w-20 h-20 text-center text-3xl font-bold uppercase bg-white border border-black focus:outline-none"
-        style=${{ caretColor: 'transparent' }}
+        class="w-full h-full text-center text-3xl font-bold uppercase bg-white border border-black focus:outline-none ${isActive ? 'hatch' : ''}"
+        style=${{ caretColor: 'transparent', ...borderStyle }}
         data-plusword-index=${i}
         onKeyDown=${(e) => handleKeyDown(e, i)}
-        onFocus=${onBlur}
+        onFocus=${() => onFocus(i)}
       />
     `);
   }
 
   return html`
-    <div class="plusword-grid flex justify-center gap-1">
+    <div class="h-20 plusword-grid inline-grid grid-cols-5 gap-0 border-2 border-black mb-8">
       ${cells}
     </div>
   `;
@@ -466,13 +538,13 @@ function Clues({ puzzle, onClueClick, activeCell, currentMode }) {
   if (!puzzle) return null;
 
   return html`
-    <div class="space-y-6 hidden lg:block">
+    <div class="space-y-6 hidden md:block">
       <div>
         <h2 class="text-2xl font-bold mb-4">Across</h2>
         <div class="space-y-2">
           ${puzzle.across_words.map((wordData, index) => {
-            const isActive = currentMode === 'across' && activeCell.row === wordData.position;
-            return html`
+    const isActive = currentMode === 'across' && activeCell.row === wordData.position;
+    return html`
               <div
                 key=${index}
                 class="p-2 hover:bg-gray-100 rounded cursor-pointer ${isActive ? 'bg-blue-200 font-bold' : ''}"
@@ -482,15 +554,15 @@ function Clues({ puzzle, onClueClick, activeCell, currentMode }) {
                 <span>${wordData.clue}</span>
               </div>
             `;
-          })}
+  })}
         </div>
       </div>
       <div>
         <h2 class="text-2xl font-bold mb-4">Down</h2>
         <div class="space-y-2">
           ${puzzle.down_words.map((wordData, index) => {
-            const isActive = currentMode === 'down' && activeCell.col === wordData.position;
-            return html`
+    const isActive = currentMode === 'down' && activeCell.col === wordData.position;
+    return html`
               <div
                 key=${index}
                 class="p-2 hover:bg-gray-100 rounded cursor-pointer ${isActive ? 'bg-blue-200 font-bold' : ''}"
@@ -500,7 +572,7 @@ function Clues({ puzzle, onClueClick, activeCell, currentMode }) {
                 <span>${wordData.clue}</span>
               </div>
             `;
-          })}
+  })}
         </div>
       </div>
     </div>

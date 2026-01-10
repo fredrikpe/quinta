@@ -31,14 +31,14 @@ fn init_database(conn: &Connection) -> Result<()> {
         [],
     )?;
 
-    // Table for complete puzzles
+    // Table for complete puzzles - now stores word IDs instead of word strings
     conn.execute(
         "CREATE TABLE IF NOT EXISTS puzzles (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL UNIQUE,
             plusword TEXT NOT NULL,
-            across_words TEXT NOT NULL,
-            down_words TEXT NOT NULL,
+            across_word_ids TEXT NOT NULL,
+            down_word_ids TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )",
         [],
@@ -54,26 +54,34 @@ fn extract_plusword(clues: &[FetchedClue]) -> Option<String> {
         .map(|c| c.word.clone())
 }
 
-fn insert_clue_word_pair(conn: &Connection, word: &str, clue: &str, slug: &str) -> Result<()> {
+fn insert_clue_word_pair(conn: &Connection, word: &str, clue: &str, slug: &str) -> Result<i64> {
     conn.execute(
         "INSERT OR IGNORE INTO clue_word_pairs (word, clue, slug) VALUES (?1, ?2, ?3)",
         [word, clue, slug],
     )?;
-    Ok(())
+
+    // Get the ID of the inserted or existing row
+    let id: i64 = conn.query_row(
+        "SELECT id FROM clue_word_pairs WHERE word = ?1 AND clue = ?2",
+        [word, clue],
+        |row| row.get(0),
+    )?;
+
+    Ok(id)
 }
 
 fn insert_puzzle(
     conn: &Connection,
     date: &str,
     plusword: &str,
-    across_words: &[String],
-    down_words: &[String],
+    across_word_ids: &[i64],
+    down_word_ids: &[i64],
 ) -> Result<()> {
-    let across_json = serde_json::to_string(across_words).unwrap();
-    let down_json = serde_json::to_string(down_words).unwrap();
+    let across_json = serde_json::to_string(across_word_ids).unwrap();
+    let down_json = serde_json::to_string(down_word_ids).unwrap();
 
     conn.execute(
-        "INSERT OR REPLACE INTO puzzles (date, plusword, across_words, down_words) VALUES (?1, ?2, ?3, ?4)",
+        "INSERT OR REPLACE INTO puzzles (date, plusword, across_word_ids, down_word_ids) VALUES (?1, ?2, ?3, ?4)",
         [date, plusword, &across_json, &down_json],
     )?;
     Ok(())
@@ -102,17 +110,11 @@ fn main() -> Result<()> {
         println!("Processing puzzle for {}...", puzzle.date);
 
         // Separate across and down clues
-        let across_clues: Vec<&FetchedClue> = puzzle
-            .clues
-            .iter()
-            .filter(|c| c.dir == "across")
-            .collect();
+        let across_clues: Vec<&FetchedClue> =
+            puzzle.clues.iter().filter(|c| c.dir == "across").collect();
 
-        let down_clues: Vec<&FetchedClue> = puzzle
-            .clues
-            .iter()
-            .filter(|c| c.dir == "down")
-            .collect();
+        let down_clues: Vec<&FetchedClue> =
+            puzzle.clues.iter().filter(|c| c.dir == "down").collect();
 
         // Check if we have exactly 5 across and 5 down (standard Plusword format)
         if across_clues.len() != 6 || down_clues.len() != 5 {
@@ -135,32 +137,38 @@ fn main() -> Result<()> {
             }
         };
 
-        // Get the 5 regular across words (excluding plusword clue)
-        let across_words: Vec<String> = across_clues
+        // Get the 5 regular across clues (excluding plusword clue)
+        let across_regular_clues: Vec<&FetchedClue> = across_clues
             .iter()
             .filter(|c| !c.clue.to_lowercase().contains("plusword"))
-            .map(|c| c.word.clone())
+            .copied()
             .collect();
 
-        let down_words: Vec<String> = down_clues.iter().map(|c| c.word.clone()).collect();
-
-        if across_words.len() != 5 || down_words.len() != 5 {
+        if across_regular_clues.len() != 5 || down_clues.len() != 5 {
             println!(
                 "  ⚠ Skipping: After filtering, got {} across and {} down words",
-                across_words.len(),
-                down_words.len()
+                across_regular_clues.len(),
+                down_clues.len()
             );
             skipped_count += 1;
             continue;
         }
 
-        // Insert all clue-word pairs
-        for clue in &puzzle.clues {
-            insert_clue_word_pair(&conn, &clue.word, &clue.clue, &clue.slug)?;
+        // Insert all clue-word pairs and collect IDs
+        let mut across_word_ids = Vec::new();
+        for clue in &across_regular_clues {
+            let id = insert_clue_word_pair(&conn, &clue.word, &clue.clue, &clue.slug)?;
+            across_word_ids.push(id);
         }
 
-        // Insert the complete puzzle
-        insert_puzzle(&conn, &puzzle.date, &plusword, &across_words, &down_words)?;
+        let mut down_word_ids = Vec::new();
+        for clue in &down_clues {
+            let id = insert_clue_word_pair(&conn, &clue.word, &clue.clue, &clue.slug)?;
+            down_word_ids.push(id);
+        }
+
+        // Insert the complete puzzle with word IDs
+        insert_puzzle(&conn, &puzzle.date, &plusword, &across_word_ids, &down_word_ids)?;
 
         println!("  ✓ Imported: {} (plusword: {})", puzzle.date, plusword);
         imported_count += 1;

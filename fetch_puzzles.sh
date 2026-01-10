@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Number of days to go back (default: 30)
-DAYS=${1:-600}
+DAYS=${1:-650}
 
 # Output file
 OUTPUT_FILE="puzzles.json"
