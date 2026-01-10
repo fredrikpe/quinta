@@ -34,13 +34,6 @@
         .hint-green {
             background-color: rgba(110, 231, 183, 0.3) !important;
         }
-        /* Override when highlighted with bg-blue-100 */
-        input[data-row].hint-yellow.bg-blue-100 {
-            background-color: rgba(253, 224, 71, 0.5) !important;
-        }
-        input[data-row].hint-green.bg-blue-100 {
-            background-color: rgba(110, 231, 183, 0.4) !important;
-        }
         /* Override focus/active states to preserve hint colors */
         input[data-row].hint-yellow:focus,
         input[data-row].hint-yellow:active {
@@ -49,6 +42,33 @@
         input[data-row].hint-green:focus,
         input[data-row].hint-green:active {
             background-color: rgba(110, 231, 183, 0.4) !important;
+        }
+
+        /* Make crossword grid always square */
+        #crossword-grid {
+            aspect-ratio: 1 / 1;
+            width: 100%;
+            max-width: min(90vw, 400px);
+        }
+
+        /* Match plusword width to main grid */
+        #plusword-grid {
+            width: 100%;
+            max-width: min(90vw, 400px);
+        }
+
+        /* Ensure grid cells maintain square aspect ratio */
+        #crossword-grid input {
+            aspect-ratio: 1 / 1;
+        }
+        .hatch {
+          background-image: repeating-linear-gradient(
+            45deg,
+            rgba(180,180,180,0.4) 0px,
+            rgba(180,180,180,0.4) 8px,
+            transparent 8px,
+            transparent 20px
+          );
         }
     </style>
 </head>
@@ -63,11 +83,11 @@
         <main class="max-w-7xl mx-auto">
             <div class="grid md:grid-cols-2 gap-8 items-start">
                 <!-- Crossword Grid -->
-                <div class="flex flex-col items-center justify-center md:justify-start -mx-4 md:mx-0">
-                    <div id="crossword-grid" class="inline-grid grid-cols-5 gap-0 border-4 border-black mb-8"></div>
-                    <div class="w-full max-w-md">
-                        <div class="bg-gray-100 p-6 rounded-lg">
-                            <div id="plusword-grid" class="flex justify-center gap-1"></div>
+                <div class="flex flex-col items-center justify-center md:justify-start">
+                    <div id="crossword-grid" class="inline-grid grid-cols-5 gap-0 border-2 border-black mb-8"></div>
+                    <div class="w-full flex justify-center">
+                        <div class="bg-gray-100 p-6 rounded-lg" style="width: min(90vw, 400px);">
+                            <div id="plusword-grid" class="flex justify-center"></div>
                             <p id="selected-clue" class="text-lg font-semibold text-gray-800 mt-4 text-center"></p>
                         </div>
                     </div>
@@ -95,9 +115,14 @@
                     <div id="modal-icon" class="text-6xl mb-4"></div>
                     <h2 id="modal-title" class="text-2xl font-bold mb-2"></h2>
                     <p id="modal-message" class="text-gray-600 mb-6"></p>
-                    <button id="modal-close" class="bg-gray-900 hover:bg-gray-800 text-white font-semibold px-8 py-3 rounded-full transition">
-                        Close
-                    </button>
+                    <div class="flex gap-3 justify-center">
+                        <button id="modal-copy" class="hidden bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-3 rounded-full transition">
+                            Copy
+                        </button>
+                        <button id="modal-close" class="bg-gray-900 hover:bg-gray-800 text-white font-semibold px-8 py-3 rounded-full transition">
+                            Close
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

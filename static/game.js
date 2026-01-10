@@ -164,7 +164,7 @@ function createGrid() {
       const cell = document.createElement('input');
       cell.type = 'text';
       cell.maxLength = 1;
-      cell.className = 'w-16 h-16 md:w-20 md:h-20 text-center text-2xl md:text-3xl font-bold uppercase bg-white border border-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:z-10';
+      cell.className = 'w-20 h-20 text-center text-3xl font-bold uppercase bg-white border border-black focus:outline-none';
       cell.style.caretColor = 'transparent'; // Hide cursor
       cell.dataset.row = row;
       cell.dataset.col = col;
@@ -201,7 +201,7 @@ function createPluswordInput() {
     const cell = document.createElement('input');
     cell.type = 'text';
     cell.maxLength = 1;
-    cell.className = 'w-12 h-12 md:w-14 md:h-14 text-center text-xl md:text-2xl font-bold uppercase bg-white border border-black focus:outline-none focus:ring-2 focus:ring-blue-500';
+    cell.className = 'w-20 h-20 text-center text-3xl font-bold uppercase bg-white border border-black focus:outline-none';
     cell.style.caretColor = 'transparent';
     cell.dataset.pluswordIndex = i;
     cell.addEventListener('input', (e) => handlePluswordInput(e, i));
@@ -429,7 +429,7 @@ function checkIfComplete() {
       const minutes = Math.floor(elapsed / 60);
       const seconds = elapsed % 60;
       const timeStr = `${minutes}:${String(seconds).padStart(2, '0')}`;
-      showModal('🎉', 'Congratulations!', `You solved the puzzle in ${timeStr}!`);
+      showModal('🎉', 'Congratulations!', `You solved the puzzle in ${timeStr}!`, timeStr);
     } else {
       showModal('❌', 'Not Quite!', 'At least one letter is wrong. Keep trying!');
     }
@@ -489,8 +489,11 @@ function handleCellClick(e, row, col) {
 function highlightActiveWord() {
   // Remove all highlights (but preserve hint classes)
   document.querySelectorAll('[data-row]').forEach(cell => {
-    cell.classList.remove('bg-blue-100');
     cell.style.boxShadow = '';
+    cell.style.borderTop = '';
+    cell.style.borderBottom = '';
+    cell.style.borderLeft = '';
+    cell.style.borderRight = '';
   });
   document.querySelectorAll('#across-clues > div, #down-clues > div').forEach(clue => {
     clue.classList.remove('bg-blue-200', 'font-bold');
@@ -503,17 +506,22 @@ function highlightActiveWord() {
   }
 
   if (currentMode === 'across') {
-    // Highlight the entire row
+    // Highlight the entire row with thicker borders
     for (let col = 0; col < 5; col++) {
       const cell = document.querySelector(`[data-row="${activeCell.row}"][data-col="${col}"]`);
       if (cell) {
-        cell.classList.add('bg-blue-100');
+        // Top and bottom borders for all cells in row
+        cell.style.borderTop = '3px solid black';
+        cell.style.borderBottom = '3px solid black';
+        // Left border for first cell
+        if (col === 0) {
+          cell.style.borderLeft = '3px solid black';
+        }
+        // Right border for last cell
+        if (col === 4) {
+          cell.style.borderRight = '3px solid black';
+        }
       }
-    }
-    // Add border to currently focused cell
-    const currentCell = document.querySelector(`[data-row="${activeCell.row}"][data-col="${activeCell.col}"]`);
-    if (currentCell) {
-      currentCell.style.boxShadow = 'inset 0 0 0 3px #3b82f6';
     }
     // Highlight the corresponding across clue and update selected clue display
     const clueIndex = activeCell.row;
@@ -526,17 +534,22 @@ function highlightActiveWord() {
       selectedClueEl.textContent = (clueIndex + 1) + '. ' + currentPuzzle.across_words[clueIndex].clue;
     }
   } else {
-    // Highlight the entire column
+    // Highlight the entire column with thicker borders
     for (let row = 0; row < 5; row++) {
       const cell = document.querySelector(`[data-row="${row}"][data-col="${activeCell.col}"]`);
       if (cell) {
-        cell.classList.add('bg-blue-100');
+        // Left and right borders for all cells in column
+        cell.style.borderLeft = '3px solid black';
+        cell.style.borderRight = '3px solid black';
+        // Top border for first cell
+        if (row === 0) {
+          cell.style.borderTop = '3px solid black';
+        }
+        // Bottom border for last cell
+        if (row === 4) {
+          cell.style.borderBottom = '3px solid black';
+        }
       }
-    }
-    // Add border to currently focused cell
-    const currentCell = document.querySelector(`[data-row="${activeCell.row}"][data-col="${activeCell.col}"]`);
-    if (currentCell) {
-      currentCell.style.boxShadow = 'inset 0 0 0 3px #3b82f6';
     }
     // Highlight the corresponding down clue and update selected clue display
     const clueIndex = activeCell.col;
@@ -549,12 +562,45 @@ function highlightActiveWord() {
       selectedClueEl.textContent = (clueIndex + 1) + '. ' + currentPuzzle.down_words[clueIndex].clue;
     }
   }
+  highlightCurrentCell();
 }
 
-function showModal(icon, title, message) {
+function highlightCurrentCell() {
+  const allCells = document.querySelectorAll('[data-row][data-col]');
+  const currentCell = document.querySelector(
+    `[data-row="${activeCell.row}"][data-col="${activeCell.col}"]`
+  );
+  allCells.forEach(c => c.classList.remove('hatch'));
+  currentCell.classList.add('hatch');
+}
+
+function showModal(icon, title, message, timeStr = null) {
   document.getElementById('modal-icon').textContent = icon;
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-message').textContent = message;
+
+  const copyButton = document.getElementById('modal-copy');
+
+  // Show copy button only for victory modal (when timeStr is provided)
+  if (timeStr) {
+    copyButton.classList.remove('hidden');
+    copyButton.onclick = () => {
+      const copyText = `I completed Quinta in ${timeStr}`;
+      navigator.clipboard.writeText(copyText).then(() => {
+        // Change button text temporarily to show feedback
+        const originalText = copyButton.textContent;
+        copyButton.textContent = 'Copied!';
+        setTimeout(() => {
+          copyButton.textContent = originalText;
+        }, 2000);
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+      });
+    };
+  } else {
+    copyButton.classList.add('hidden');
+  }
+
   const modal = document.getElementById('result-modal');
   modal.classList.remove('hidden');
   // ensure modal is visible even if Tailwind classes are changed; force display

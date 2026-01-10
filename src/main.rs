@@ -35,10 +35,11 @@ fn load_random_word() -> Result<String> {
 fn load_puzzle_from_db(date: &str) -> Result<Option<(Vec<String>, Vec<String>)>> {
     let conn = Connection::open("quinta.db")?;
 
-    let mut stmt =
-        conn.prepare("SELECT across_words, down_words, plusword FROM puzzles WHERE date = ?1")?;
+    let mut stmt = conn.prepare(
+        "SELECT across_words, down_words, plusword FROM puzzles order by date desc limit 1",
+    )?;
 
-    let result = stmt.query_row([date], |row| {
+    let result = stmt.query_row([], |row| {
         let across_json: String = row.get(0)?;
         let down_json: String = row.get(1)?;
         let across_words: Vec<String> = serde_json::from_str(&across_json).unwrap();
