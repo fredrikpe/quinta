@@ -3,13 +3,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Puzzle {
     pub date: String,
-    pub across_words: Vec<String>,
-    pub down_words: Vec<String>,
+    pub across_words: Vec<ClueWord>,
+    pub down_words: Vec<ClueWord>,
     pub plusword: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClueWord {
+    pub id: i64,
     pub word: String,
     pub clue: String,
 }

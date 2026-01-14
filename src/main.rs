@@ -1,44 +1,49 @@
+mod generator;
 mod models;
 
 use actix_files as fs;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use models::{DailyPuzzle, WordWithPosition};
-use rusqlite::{Connection, Result};
-use std::sync::Mutex;
+use rusqlite::Connection;
 use std::time::Instant;
+use std::{collections::HashSet, sync::Mutex};
 
 use crate::models::{ClueWord, Hint, Puzzle};
+
+type AppResult<T> = Result<T, String>;
 
 struct AppState {
     db: Mutex<Connection>,
 }
 
-fn load_all_clues() -> Result<Vec<ClueWord>> {
-    let conn = Connection::open("quinta.db")?;
+fn load_all_clues() -> AppResult<Vec<ClueWord>> {
+    let conn = Connection::open("quinta.db").map_err(|e| format!("DB connection failed: {}", e))?;
 
-    let mut stmt = conn.prepare("SELECT id, clue, word FROM clue_word_pairs")?;
+    let mut stmt = conn
+        .prepare("SELECT id, clue, word FROM clue_word_pairs")
+        .map_err(|e| format!("select failed: {}", e))?;
 
     let result = stmt
         .query_map([], |row| {
+            let id: i64 = row.get(0)?;
             let clue: String = row.get(1)?;
             let word: String = row.get(2)?;
-            Ok(ClueWord { word, clue })
+            Ok(ClueWord { id, word, clue })
         })
         .and_then(|e| e.collect());
 
     match result {
         Ok(data) => Ok(data),
-        Err(e) => {
-            eprintln!("Error loading clues: {:?}", &e);
-            Err(e)
-        }
+        Err(e) => Err(format!("Error loading clues: {:?}", &e)),
     }
 }
 
-fn load_random_word() -> Result<String> {
-    let conn = Connection::open("quinta.db")?;
+fn load_random_word() -> AppResult<String> {
+    let conn = Connection::open("quinta.db").map_err(|e| format!("db connection failed: {}", e))?;
 
-    let mut stmt = conn.prepare("SELECT * FROM word ORDER BY RANDOM() LIMIT 1")?;
+    let mut stmt = conn
+        .prepare("SELECT * FROM word ORDER BY RANDOM() LIMIT 1")
+        .map_err(|e| e.to_string())?;
 
     let result = stmt.query_row([], |row| {
         let word: String = row.get(1)?;
@@ -48,14 +53,11 @@ fn load_random_word() -> Result<String> {
     match result {
         Ok(data) => Ok(data),
         Err(rusqlite::Error::QueryReturnedNoRows) => panic!("get random word returned no word"),
-        Err(e) => {
-            eprintln!("Error loading random word: {:?}", &e);
-            Err(e)
-        }
+        Err(e) => Err(e.to_string()),
     }
 }
 
-fn get_word_and_clue_by_id(conn: &Connection, id: i64) -> Result<(String, String)> {
+fn get_word_and_clue_by_id(conn: &Connection, id: i64) -> AppResult<(String, String)> {
     conn.query_row(
         "SELECT word, clue FROM clue_word_pairs WHERE id = ?1",
         [id],
@@ -65,13 +67,15 @@ fn get_word_and_clue_by_id(conn: &Connection, id: i64) -> Result<(String, String
             Ok((word, clue))
         },
     )
+    .map_err(|e| e.to_string())
 }
 
-fn load_todays_puzzle(date: &str) -> Result<Option<Puzzle>> {
-    let conn = Connection::open("quinta.db")?;
+fn load_todays_puzzle(date: &str) -> AppResult<Option<Puzzle>> {
+    let conn = Connection::open("quinta.db").map_err(|e| e.to_string())?;
 
-    let mut stmt =
-        conn.prepare("SELECT across_word_ids, down_word_ids, plusword FROM puzzles where date = ?1")?;
+    let mut stmt = conn
+        .prepare("SELECT across_word_ids, down_word_ids, plusword FROM puzzles where date = ?1")
+        .map_err(|e| e.to_string())?;
 
     let result = stmt.query_row([date], |row| {
         let across_ids_json: String = row.get(0)?;
@@ -84,15 +88,15 @@ fn load_todays_puzzle(date: &str) -> Result<Option<Puzzle>> {
         // Fetch actual words from IDs
         let mut across_words = Vec::new();
         for id in across_ids {
-            if let Ok((word, _clue)) = get_word_and_clue_by_id(&conn, id) {
-                across_words.push(word);
+            if let Ok((word, clue)) = get_word_and_clue_by_id(&conn, id) {
+                across_words.push(ClueWord { id, word, clue });
             }
         }
 
         let mut down_words = Vec::new();
         for id in down_ids {
-            if let Ok((word, _clue)) = get_word_and_clue_by_id(&conn, id) {
-                down_words.push(word);
+            if let Ok((word, clue)) = get_word_and_clue_by_id(&conn, id) {
+                down_words.push(ClueWord { id, word, clue });
             }
         }
 
@@ -110,19 +114,24 @@ fn load_todays_puzzle(date: &str) -> Result<Option<Puzzle>> {
             Ok(Some(data))
         }
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(e),
+        Err(e) => Err(e.to_string()),
     }
 }
 
-fn get_clue_for_word(word: &str) -> Result<String> {
-    let conn = Connection::open("quinta.db")?;
+/*
+fn get_clue_for_word(word: &str) -> AppResult<String> {
+    let conn = Connection::open("quinta.db").map_err(|e| e.to_string())?;
 
-    let mut stmt = conn.prepare("SELECT clue FROM clue_word_pairs WHERE word = ?1 LIMIT 1")?;
+    let mut stmt = conn
+        .prepare("SELECT clue FROM clue_word_pairs WHERE word = ?1 LIMIT 1")
+        .map_err(|e| e.to_string())?;
 
     stmt.query_row([word], |row| row.get(0))
+        .map_err(|e| e.to_string())?
 }
+*/
 
-fn get_word_id(conn: &Connection, word: &str) -> Result<Option<i64>> {
+fn get_word_id(conn: &Connection, word: &str) -> AppResult<Option<i64>> {
     let result = conn.query_row(
         "SELECT id FROM clue_word_pairs WHERE word = ?1 LIMIT 1",
         [word],
@@ -132,7 +141,7 @@ fn get_word_id(conn: &Connection, word: &str) -> Result<Option<i64>> {
     match result {
         Ok(id) => Ok(Some(id)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(e),
+        Err(e) => Err(e.to_string()),
     }
 }
 
@@ -185,22 +194,20 @@ fn add_hints(puzzle: Puzzle) -> DailyPuzzle {
     let mut across_with_clues = Vec::new();
     let mut down_with_clues = Vec::new();
 
-    for (i, word) in puzzle.across_words.iter().enumerate() {
-        let clue = get_clue_for_word(word).unwrap_or_else(|_| "No clue available".to_string());
+    for (i, clue_word) in puzzle.across_words.iter().enumerate() {
         across_with_clues.push(WordWithPosition {
-            word: word.clone(),
-            clue,
-            hints: hints_across(&puzzle.plusword, &word),
+            word: clue_word.word.clone(),
+            clue: clue_word.clue.clone(),
+            hints: hints_across(&puzzle.plusword, &clue_word.word),
             position: i,
         });
     }
 
-    for (i, word) in puzzle.down_words.iter().enumerate() {
-        let clue = get_clue_for_word(word).unwrap_or_else(|_| "No clue available".to_string());
+    for (i, clue_word) in puzzle.down_words.iter().enumerate() {
         down_with_clues.push(WordWithPosition {
-            word: word.clone(),
-            clue,
-            hints: hints_down(&puzzle.plusword, &word, i),
+            word: clue_word.word.clone(),
+            clue: clue_word.clue.clone(),
+            hints: hints_down(&puzzle.plusword, &clue_word.word, i),
             position: i,
         });
     }
@@ -213,25 +220,25 @@ fn add_hints(puzzle: Puzzle) -> DailyPuzzle {
     }
 }
 
-fn save_puzzle_to_db(puzzle: &Puzzle) -> Result<()> {
-    let conn = Connection::open("quinta.db")?;
+fn save_puzzle_to_db(puzzle: &Puzzle) -> AppResult<()> {
+    let conn = Connection::open("quinta.db").map_err(|e| format!("DB connection failed: {}", e))?;
 
     // Get word IDs for across and down words
     let mut across_word_ids = Vec::new();
-    for word in &puzzle.across_words {
-        if let Some(id) = get_word_id(&conn, word)? {
+    for clue_word in &puzzle.across_words {
+        if let Some(id) = get_word_id(&conn, &clue_word.word)? {
             across_word_ids.push(id);
         } else {
-            eprintln!("Warning: No ID found for word '{}'", word);
+            eprintln!("Warning: No ID found for word '{}'", &clue_word.word);
         }
     }
 
     let mut down_word_ids = Vec::new();
-    for word in &puzzle.down_words {
-        if let Some(id) = get_word_id(&conn, word)? {
+    for clue_word in &puzzle.down_words {
+        if let Some(id) = get_word_id(&conn, &clue_word.word)? {
             down_word_ids.push(id);
         } else {
-            eprintln!("Warning: No ID found for word '{}'", word);
+            eprintln!("Warning: No ID found for word '{}'", &clue_word.word);
         }
     }
 
@@ -241,79 +248,18 @@ fn save_puzzle_to_db(puzzle: &Puzzle) -> Result<()> {
     conn.execute(
         "INSERT INTO puzzles (date, across_word_ids, down_word_ids, plusword) VALUES (?1, ?2, ?3, ?4)",
         (&puzzle.date, &across_json, &down_json, &puzzle.plusword),
-    )?;
+    ).map_err(|e| format!("insert failed: {}", e))?;
 
     println!("✓ Saved puzzle to database for {}", puzzle.date);
 
     Ok(())
 }
 
-fn generate_crossword(clue_words: &[ClueWord]) -> Option<(Vec<String>, Vec<String>)> {
-    use rand::seq::SliceRandom;
-    use rand::thread_rng;
-
-    let start_time = Instant::now();
-    println!("Starting crossword generation...");
-
-    let mut rng = thread_rng();
-    let mut shuffled = clue_words.to_vec();
-    shuffled.shuffle(&mut rng);
-
-    // Try to build a valid 5x5 grid with brute force
-    for attempt in 0..100_000 {
-        let mut across_words = Vec::new();
-        let mut down_words = Vec::new();
-
-        // Pick 5 random words for across
-        let mut across_candidates = shuffled.clone();
-        across_candidates.shuffle(&mut rng);
-        for cw in across_candidates.iter().take(5) {
-            across_words.push(cw.word.to_uppercase());
-        }
-
-        // Build the grid
-        let mut grid: Vec<Vec<char>> = Vec::new();
-        for across in &across_words {
-            grid.push(across.chars().collect());
-        }
-
-        // Extract down words from the grid
-        for col in 0..5 {
-            let down_word: String = (0..5).map(|row| grid[row][col]).collect();
-            down_words.push(down_word);
-        }
-
-        // Check if all down words have clues
-        let all_valid = down_words
-            .iter()
-            .all(|word| shuffled.iter().any(|cw| cw.word.to_uppercase() == *word));
-
-        if all_valid {
-            let elapsed = start_time.elapsed();
-            println!(
-                "✓ Generated valid crossword in {} attempts ({:.2}ms)",
-                attempt + 1,
-                elapsed.as_secs_f64() * 1000.0
-            );
-            return Some((across_words, down_words));
-        }
-    }
-
-    let elapsed = start_time.elapsed();
-    eprintln!(
-        "✗ Failed to generate crossword after 100,000 attempts ({:.2}s)",
-        elapsed.as_secs_f64()
-    );
-    None
-}
-
-fn create_todays_puzzle() -> DailyPuzzle {
+fn create_todays_puzzle() -> AppResult<DailyPuzzle> {
     let overall_start = Instant::now();
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
-    println!("\n========================================");
     println!("Generating new puzzle for {}", today);
-    println!("========================================");
 
     let clue_words = load_all_clues().expect("Failed to load clues");
     println!("Loaded {} clue-word pairs", clue_words.len());
@@ -325,23 +271,12 @@ fn create_todays_puzzle() -> DailyPuzzle {
     println!("Selected plusword: {}", plusword);
 
     // Generate a valid crossword with brute force
-    let (across_words, down_words) = match generate_crossword(&clue_words) {
+    let (across_words, down_words) = match generator::generate_crossword(&clue_words) {
         Some(result) => result,
         None => {
-            eprintln!("Failed to generate crossword, using fallback");
-            // Fallback to first 5 words if generation fails
-            let words: Vec<String> = clue_words
-                .iter()
-                .filter(|cw| cw.word.len() == 5)
-                .take(5)
-                .map(|cw| cw.word.to_uppercase())
-                .collect();
-            (words.clone(), words)
+            return Err(format!("Failed to generate crossword, using fallback").to_string());
         }
     };
-
-    println!("Across words: {:?}", across_words);
-    println!("Down words: {:?}", down_words);
 
     let puzzle = Puzzle {
         date: today.clone(),
@@ -360,25 +295,34 @@ fn create_todays_puzzle() -> DailyPuzzle {
         "✓ Total puzzle generation time: {:.2}s",
         total_elapsed.as_secs_f64()
     );
-    println!("========================================\n");
 
     // Return with hints
-    add_hints(puzzle)
+    Ok(add_hints(puzzle))
 }
 
 async fn get_today_puzzle(_data: web::Data<AppState>) -> impl Responder {
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
-    match load_todays_puzzle(&today) {
-        Ok(Some(puzzle_dbo)) => HttpResponse::Ok().json(add_hints(puzzle_dbo)),
-        Ok(None) => HttpResponse::Ok().json(create_todays_puzzle()),
-        Err(e) => HttpResponse::InternalServerError().body(format!("Database error: {}", e)),
+    let puzzle = match load_todays_puzzle(&today) {
+        Ok(Some(puzzle)) => Ok(add_hints(puzzle)),
+        Ok(None) => create_todays_puzzle(),
+        Err(e) => Err(e),
+    };
+
+    match puzzle {
+        Ok(puzzle) => HttpResponse::Ok().json(puzzle),
+        Err(e) => HttpResponse::InternalServerError().body(format!("error: {}", e)),
     }
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     println!("Starting Quinta server at http://localhost:8080");
+
+    //let clue_words = load_all_clues().expect("Failed to load clues");
+    //generate_crossword(&clue_words);
+
+    //return Ok(());
 
     let _conn = Connection::open("quinta.db")
         .expect("Failed to open database. Make sure quinta.db exists.");
