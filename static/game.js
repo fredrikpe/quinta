@@ -8,7 +8,7 @@ const html = htm.bind(h);
 function App() {
   const [puzzle, setPuzzle] = useState(null);
   const [gridData, setGridData] = useState(Array(5).fill().map(() => Array(5).fill('')));
-  const [pluswordData, setPluswordData] = useState('');
+  const [pluswordData, setPluswordData] = useState('     '); // 5 spaces
   const [startTime, setStartTime] = useState(null);
   const [elapsed, setElapsed] = useState(0);
   const [currentMode, setCurrentMode] = useState('across');
@@ -100,7 +100,7 @@ function App() {
 
   function checkIfComplete() {
     const allGridFilled = gridData.every(row => row.every(cell => cell !== ''));
-    const pluswordFilled = pluswordData.length === 5;
+    const pluswordFilled = pluswordData.length === 5 && !pluswordData.includes(' ');
 
     console.log(allGridFilled, pluswordData)
 
@@ -122,60 +122,22 @@ function App() {
     const newGridData = gridData.map(r => [...r]);
     newGridData[row][col] = value.toUpperCase();
     setGridData(newGridData);
+    // Check if puzzle is complete after state update
+    setTimeout(() => checkIfComplete(), 10);
   }
 
   function handlePluswordChange(index, value, shouldCheckComplete = false) {
+    // Always maintain exactly 5 characters (spaces for empty cells)
     const cells = pluswordData.split('');
-    while (cells.length < 5) cells.push('');
-    cells[index] = value.toUpperCase();
-    const newPluswordData = cells.join('').slice(0, 5);
+    while (cells.length < 5) cells.push(' ');
+    cells[index] = value ? value.toUpperCase() : ' ';
+    const newPluswordData = cells.slice(0, 5).join('');
     setPluswordData(newPluswordData);
 
-    // If we should check complete, do it with the new value
+    // If we should check complete, check after state updates
     if (shouldCheckComplete) {
-      setTimeout(() => {
-        const allGridFilled = gridData.every(row => row.every(cell => cell !== ''));
-        const pluswordFilled = newPluswordData.length === 5;
-
-        if (allGridFilled && pluswordFilled) {
-          // Validate using the new plusword data
-          if (!puzzle) return;
-
-          // Check across words
-          for (let row = 0; row < puzzle.across_words.length; row++) {
-            const across = puzzle.across_words[row];
-            for (let col = 0; col < across.word.length; col++) {
-              if (gridData[row][col].toUpperCase() !== across.word[col].toUpperCase()) {
-                showModal('❌', 'Not Quite!', 'At least one letter is wrong. Keep trying!');
-                return;
-              }
-            }
-          }
-
-          // Check down words
-          for (let col = 0; col < puzzle.down_words.length; col++) {
-            const down = puzzle.down_words[col];
-            for (let row = 0; row < down.word.length; row++) {
-              if (gridData[row][col].toUpperCase() !== down.word[row].toUpperCase()) {
-                showModal('❌', 'Not Quite!', 'At least one letter is wrong. Keep trying!');
-                return;
-              }
-            }
-          }
-
-          // Check plusword with new data
-          if (newPluswordData.toUpperCase() !== puzzle.plusword.toUpperCase()) {
-            showModal('❌', 'Not Quite!', 'At least one letter is wrong. Keep trying!');
-            return;
-          }
-
-          // Success!
-          const minutes = Math.floor(elapsed / 60);
-          const seconds = elapsed % 60;
-          const timeStr = `${minutes}:${String(seconds).padStart(2, '0')}`;
-          showModal('🎉', 'Congratulations!', `You solved the puzzle in ${timeStr}!`, timeStr);
-        }
-      }, 0);
+      // Use setTimeout to ensure React has updated state
+      setTimeout(() => checkIfComplete(), 10);
     }
   }
 
@@ -325,6 +287,10 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
         } else if (row < 4) {
           const key = `${row + 1}-0`;
           cellRefs.current[key]?.focus();
+        } else {
+          // At last cell of grid, move to plusword
+          const firstPlusword = document.querySelector('[data-plusword-index="0"]');
+          if (firstPlusword) firstPlusword.focus();
         }
       } else {
         if (row < 4) {
@@ -333,10 +299,13 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
         } else if (col < 4) {
           const key = `0-${col + 1}`;
           cellRefs.current[key]?.focus();
+        } else {
+          // At last cell of grid, move to plusword
+          const firstPlusword = document.querySelector('[data-plusword-index="0"]');
+          if (firstPlusword) firstPlusword.focus();
         }
       }
 
-      setTimeout(onComplete, 0);
       return;
     }
 
@@ -360,6 +329,11 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
           e.preventDefault();
           setCurrentMode('down');
           cellRefs.current[`${row + 1}-${col}`]?.focus();
+        } else {
+          // At last row, move to plusword at same column
+          e.preventDefault();
+          const pluswordCell = document.querySelector(`[data-plusword-index="${col}"]`);
+          if (pluswordCell) pluswordCell.focus();
         }
         break;
       case 'ArrowUp':
@@ -371,28 +345,30 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
         break;
       case 'Backspace':
         e.preventDefault();
-        onCellChange(row, col, '');
+        const currentValue = gridData[row][col];
 
-        if (currentMode === 'across') {
-          if (col > 0) {
-            cellRefs.current[`${row}-${col - 1}`]?.focus();
-          } else if (row > 0) {
-            const prevCell = cellRefs.current[`${row - 1}-4`];
-            if (prevCell) {
+        // If current cell is empty, move back and delete previous cell
+        if (!currentValue) {
+          if (currentMode === 'across') {
+            if (col > 0) {
+              onCellChange(row, col - 1, '');
+              cellRefs.current[`${row}-${col - 1}`]?.focus();
+            } else if (row > 0) {
               onCellChange(row - 1, 4, '');
-              prevCell.focus();
+              cellRefs.current[`${row - 1}-4`]?.focus();
+            }
+          } else {
+            if (row > 0) {
+              onCellChange(row - 1, col, '');
+              cellRefs.current[`${row - 1}-${col}`]?.focus();
+            } else if (col > 0) {
+              onCellChange(4, col - 1, '');
+              cellRefs.current[`4-${col - 1}`]?.focus();
             }
           }
         } else {
-          if (row > 0) {
-            cellRefs.current[`${row - 1}-${col}`]?.focus();
-          } else if (col > 0) {
-            const prevCell = cellRefs.current[`4-${col - 1}`];
-            if (prevCell) {
-              onCellChange(4, col - 1, '');
-              prevCell.focus();
-            }
-          }
+          // If current cell has value, just delete it (stay in place)
+          onCellChange(row, col, '');
         }
         break;
     }
@@ -442,8 +418,8 @@ function PluswordInput({ pluswordData, onChange, activePluswordIndex, onFocus })
   function handleKeyDown(e, index) {
     if (e.key.length === 1 && e.key.match(/[a-zA-Z]/)) {
       e.preventDefault();
-      const shouldCheck = index === 4; // Check if complete when entering last cell
-      onChange(index, e.key, shouldCheck);
+      // Always check for completion after any letter input
+      onChange(index, e.key, true);
       if (index < 4) {
         cellRefs.current[index + 1]?.focus();
       }
@@ -467,11 +443,17 @@ function PluswordInput({ pluswordData, onChange, activePluswordIndex, onFocus })
         e.preventDefault();
         const currentValue = pluswordData[index] || '';
         if (!currentValue && index > 0) {
-          onChange(index - 1, '');
+          onChange(index - 1, '', false);
           cellRefs.current[index - 1]?.focus();
         } else {
-          onChange(index, '');
+          onChange(index, '', false);
         }
+        break;
+      case 'ArrowUp':
+        // Move to grid cell directly above (row 4, same column)
+        e.preventDefault();
+        const gridCell = document.querySelector(`[data-row="4"][data-col="${index}"]`);
+        if (gridCell) gridCell.focus();
         break;
     }
   }
@@ -500,10 +482,20 @@ function PluswordInput({ pluswordData, onChange, activePluswordIndex, onFocus })
         ref=${el => cellRefs.current[i] = el}
         type="text"
         maxLength="1"
-        value=${pluswordData[i] || ''}
+        value=${pluswordData[i] === ' ' ? '' : pluswordData[i]}
         class="w-full h-full text-center text-3xl font-bold uppercase bg-white border border-black focus:outline-none ${isActive ? 'hatch' : ''}"
         style=${{ caretColor: 'transparent', ...borderStyle }}
         data-plusword-index=${i}
+        onInput=${(e) => {
+          // Completely prevent any input changes - we handle everything in onKeyDown
+          e.preventDefault();
+          e.stopPropagation();
+          // Reset value to current state
+          const currentVal = pluswordData[i] === ' ' ? '' : pluswordData[i];
+          if (e.target.value !== currentVal) {
+            e.target.value = currentVal;
+          }
+        }}
         onKeyDown=${(e) => handleKeyDown(e, i)}
         onFocus=${() => onFocus(i)}
       />
