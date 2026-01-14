@@ -59,7 +59,7 @@ function App() {
 
   function handleCopy() {
     if (modal.timeStr) {
-      const copyText = `I completed Quinta in ${modal.timeStr}`;
+      const copyText = `I just completed Quinta in ${modal.timeStr}! https://quinta.pl`;
       navigator.clipboard.writeText(copyText).then(() => {
         setCopyButtonText('Copied!');
         setTimeout(() => setCopyButtonText('Copy'), 2000);
@@ -159,9 +159,9 @@ function App() {
               activeCell=${activeCell}
               onCellChange=${handleGridCellChange}
               onCellFocus=${(row, col) => {
-                setActiveCell({ row, col });
-                setActivePluswordIndex(null);
-              }}
+      setActiveCell({ row, col });
+      setActivePluswordIndex(null);
+    }}
               onCellClick=${(row, col) => {
       if (prevActiveOnMouseDown && prevActiveOnMouseDown.row === row && prevActiveOnMouseDown.col === col) {
         setCurrentMode(currentMode === 'across' ? 'down' : 'across');
@@ -181,9 +181,9 @@ function App() {
                   onChange=${handlePluswordChange}
                   activePluswordIndex=${activePluswordIndex}
                   onFocus=${(index) => {
-                    setActivePluswordIndex(index);
-                    setActiveCell({ row: null, col: null });
-                  }}
+      setActivePluswordIndex(index);
+      setActiveCell({ row: null, col: null });
+    }}
                 />
                 <${SelectedClue} puzzle=${puzzle} activeCell=${activeCell} currentMode=${currentMode} />
               </div>
@@ -487,15 +487,15 @@ function PluswordInput({ pluswordData, onChange, activePluswordIndex, onFocus })
         style=${{ caretColor: 'transparent', ...borderStyle }}
         data-plusword-index=${i}
         onInput=${(e) => {
-          // Completely prevent any input changes - we handle everything in onKeyDown
-          e.preventDefault();
-          e.stopPropagation();
-          // Reset value to current state
-          const currentVal = pluswordData[i] === ' ' ? '' : pluswordData[i];
-          if (e.target.value !== currentVal) {
-            e.target.value = currentVal;
-          }
-        }}
+        // Completely prevent any input changes - we handle everything in onKeyDown
+        e.preventDefault();
+        e.stopPropagation();
+        // Reset value to current state
+        const currentVal = pluswordData[i] === ' ' ? '' : pluswordData[i];
+        if (e.target.value !== currentVal) {
+          e.target.value = currentVal;
+        }
+      }}
         onKeyDown=${(e) => handleKeyDown(e, i)}
         onFocus=${() => onFocus(i)}
       />
