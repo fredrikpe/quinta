@@ -17,6 +17,7 @@ function App() {
   const [prevActiveOnMouseDown, setPrevActiveOnMouseDown] = useState(null);
   const [modal, setModal] = useState({ visible: false, icon: '', title: '', message: '', timeStr: null });
   const [copyButtonText, setCopyButtonText] = useState('Copy');
+  const [hasShownResult, setHasShownResult] = useState(false);
 
   // Load puzzle on mount
   useEffect(() => {
@@ -67,14 +68,14 @@ function App() {
     }
   }
 
-  function validatePuzzle() {
+  function validatePuzzle(currentGridData, currentPluswordData) {
     if (!puzzle) return false;
 
     // Check across words
     for (let row = 0; row < puzzle.across_words.length; row++) {
       const across = puzzle.across_words[row];
       for (let col = 0; col < across.word.length; col++) {
-        if (gridData[row][col].toUpperCase() !== across.word[col].toUpperCase()) {
+        if (currentGridData[row][col].toUpperCase() !== across.word[col].toUpperCase()) {
           return false;
         }
       }
@@ -84,60 +85,64 @@ function App() {
     for (let col = 0; col < puzzle.down_words.length; col++) {
       const down = puzzle.down_words[col];
       for (let row = 0; row < down.word.length; row++) {
-        if (gridData[row][col].toUpperCase() !== down.word[row].toUpperCase()) {
+        if (currentGridData[row][col].toUpperCase() !== down.word[row].toUpperCase()) {
           return false;
         }
       }
     }
 
     // Check plusword
-    if (pluswordData.toUpperCase() !== puzzle.plusword.toUpperCase()) {
+    if (currentPluswordData.toUpperCase() !== puzzle.plusword.toUpperCase()) {
       return false;
     }
 
     return true;
   }
 
-  function checkIfComplete() {
+  // Check for completion whenever grid or plusword changes
+  useEffect(() => {
+    // Don't check if modal is already visible, puzzle not loaded, or result already shown
+    if (!puzzle || modal.visible || hasShownResult) return;
+
     const allGridFilled = gridData.every(row => row.every(cell => cell !== ''));
     const pluswordFilled = pluswordData.length === 5 && !pluswordData.includes(' ');
 
-    console.log(allGridFilled, pluswordData)
-
     if (allGridFilled && pluswordFilled) {
-      const success = validatePuzzle();
+      const success = validatePuzzle(gridData, pluswordData);
 
       if (success) {
         const minutes = Math.floor(elapsed / 60);
         const seconds = elapsed % 60;
         const timeStr = `${minutes}:${String(seconds).padStart(2, '0')}`;
         showModal('🎉', 'Congratulations!', `You solved the puzzle in ${timeStr}!`, timeStr);
+        setHasShownResult(true);
       } else {
         showModal('❌', 'Not Quite!', 'At least one letter is wrong. Keep trying!');
+        setHasShownResult(true);
       }
     }
-  }
+  }, [gridData, pluswordData, puzzle, modal.visible, elapsed, hasShownResult]);
 
   function handleGridCellChange(row, col, value) {
     const newGridData = gridData.map(r => [...r]);
     newGridData[row][col] = value.toUpperCase();
     setGridData(newGridData);
-    // Check if puzzle is complete after state update
-    setTimeout(() => checkIfComplete(), 10);
+    // Reset the flag when user makes changes after seeing a result
+    if (hasShownResult) {
+      setHasShownResult(false);
+    }
   }
 
-  function handlePluswordChange(index, value, shouldCheckComplete = false) {
+  function handlePluswordChange(index, value) {
     // Always maintain exactly 5 characters (spaces for empty cells)
     const cells = pluswordData.split('');
     while (cells.length < 5) cells.push(' ');
     cells[index] = value ? value.toUpperCase() : ' ';
     const newPluswordData = cells.slice(0, 5).join('');
     setPluswordData(newPluswordData);
-
-    // If we should check complete, check after state updates
-    if (shouldCheckComplete) {
-      // Use setTimeout to ensure React has updated state
-      setTimeout(() => checkIfComplete(), 10);
+    // Reset the flag when user makes changes after seeing a result
+    if (hasShownResult) {
+      setHasShownResult(false);
     }
   }
 
@@ -170,7 +175,6 @@ function App() {
       setActiveCell({ row, col });
       setActivePluswordIndex(null);
     }}
-              onComplete=${checkIfComplete}
               setCurrentMode=${setCurrentMode}
             />
 
@@ -227,7 +231,7 @@ function Header({ puzzleNumber }) {
   `;
 }
 
-function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange, onCellFocus, onCellClick, onComplete, setCurrentMode }) {
+function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange, onCellFocus, onCellClick, setCurrentMode }) {
   const cellRefs = useRef({});
 
   function getHintClass(row, col) {
@@ -418,8 +422,7 @@ function PluswordInput({ pluswordData, onChange, activePluswordIndex, onFocus })
   function handleKeyDown(e, index) {
     if (e.key.length === 1 && e.key.match(/[a-zA-Z]/)) {
       e.preventDefault();
-      // Always check for completion after any letter input
-      onChange(index, e.key, true);
+      onChange(index, e.key);
       if (index < 4) {
         cellRefs.current[index + 1]?.focus();
       }
@@ -443,10 +446,10 @@ function PluswordInput({ pluswordData, onChange, activePluswordIndex, onFocus })
         e.preventDefault();
         const currentValue = pluswordData[index] || '';
         if (!currentValue && index > 0) {
-          onChange(index - 1, '', false);
+          onChange(index - 1, '');
           cellRefs.current[index - 1]?.focus();
         } else {
-          onChange(index, '', false);
+          onChange(index, '');
         }
         break;
       case 'ArrowUp':
@@ -576,15 +579,23 @@ function Modal({ visible, icon, title, message, timeStr, copyButtonText, onClose
     if (!visible) return;
 
     const handleKeyOrClick = (e) => {
+      // Ignore clicks on the modal content itself
+      if (e.type === 'click' && e.target.closest('.modal-content')) {
+        return;
+      }
       onClose();
     };
 
-    window.addEventListener('keydown', handleKeyOrClick, { capture: true });
-    window.addEventListener('click', handleKeyOrClick, { capture: true });
+    // Add a small delay to avoid catching the event that triggered the modal
+    const timeoutId = setTimeout(() => {
+      window.addEventListener('keydown', handleKeyOrClick);
+      window.addEventListener('click', handleKeyOrClick);
+    }, 100);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyOrClick, { capture: true });
-      window.removeEventListener('click', handleKeyOrClick, { capture: true });
+      clearTimeout(timeoutId);
+      window.removeEventListener('keydown', handleKeyOrClick);
+      window.removeEventListener('click', handleKeyOrClick);
     };
   }, [visible, onClose]);
 
@@ -592,7 +603,7 @@ function Modal({ visible, icon, title, message, timeStr, copyButtonText, onClose
 
   return html`
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style="display: flex;">
-      <div class="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+      <div class="modal-content bg-white rounded-lg p-8 max-w-md w-full mx-4">
         <div class="text-center">
           <div class="text-6xl mb-4">${icon}</div>
           <h2 class="text-2xl font-bold mb-2">${title}</h2>
