@@ -4,16 +4,13 @@ import htm from "https://esm.sh/htm";
 
 const html = htm.bind(h);
 
-// Main App Component
 function App() {
   const [puzzle, setPuzzle] = useState(null);
-  const [gridData, setGridData] = useState(Array(5).fill().map(() => Array(5).fill('')));
-  const [pluswordData, setPluswordData] = useState('     '); // 5 spaces
+  const [gridData, setGridData] = useState(Array(6).fill().map(() => Array(5).fill(''))); // 6 rows: 0-4 regular, 5 plusword
   const [startTime, setStartTime] = useState(null);
   const [elapsed, setElapsed] = useState(0);
   const [currentMode, setCurrentMode] = useState('across');
   const [activeCell, setActiveCell] = useState({ row: null, col: null });
-  const [activePluswordIndex, setActivePluswordIndex] = useState(null);
   const [prevActiveOnMouseDown, setPrevActiveOnMouseDown] = useState(null);
   const [modal, setModal] = useState({ visible: false, icon: '', title: '', message: '', timeStr: null });
   const [copyButtonText, setCopyButtonText] = useState('Copy');
@@ -68,10 +65,10 @@ function App() {
     }
   }
 
-  function validatePuzzle(currentGridData, currentPluswordData) {
+  function validatePuzzle(currentGridData) {
     if (!puzzle) return false;
 
-    // Check across words
+    // Check across words (rows 0-4)
     for (let row = 0; row < puzzle.across_words.length; row++) {
       const across = puzzle.across_words[row];
       for (let col = 0; col < across.word.length; col++) {
@@ -81,7 +78,7 @@ function App() {
       }
     }
 
-    // Check down words
+    // Check down words (rows 0-4)
     for (let col = 0; col < puzzle.down_words.length; col++) {
       const down = puzzle.down_words[col];
       for (let row = 0; row < down.word.length; row++) {
@@ -91,24 +88,24 @@ function App() {
       }
     }
 
-    // Check plusword
-    if (currentPluswordData.toUpperCase() !== puzzle.plusword.toUpperCase()) {
+    // Check plusword (row 5)
+    const pluswordFromGrid = currentGridData[5].join('');
+    if (pluswordFromGrid.toUpperCase() !== puzzle.plusword.toUpperCase()) {
       return false;
     }
 
     return true;
   }
 
-  // Check for completion whenever grid or plusword changes
+  // Check for completion whenever grid changes
   useEffect(() => {
     // Don't check if modal is already visible, puzzle not loaded, or result already shown
     if (!puzzle || modal.visible || hasShownResult) return;
 
     const allGridFilled = gridData.every(row => row.every(cell => cell !== ''));
-    const pluswordFilled = pluswordData.length === 5 && !pluswordData.includes(' ');
 
-    if (allGridFilled && pluswordFilled) {
-      const success = validatePuzzle(gridData, pluswordData);
+    if (allGridFilled) {
+      const success = validatePuzzle(gridData);
 
       if (success) {
         const minutes = Math.floor(elapsed / 60);
@@ -121,25 +118,12 @@ function App() {
         setHasShownResult(true);
       }
     }
-  }, [gridData, pluswordData, puzzle, modal.visible, elapsed, hasShownResult]);
+  }, [gridData, puzzle, modal.visible, elapsed, hasShownResult]);
 
   function handleGridCellChange(row, col, value) {
     const newGridData = gridData.map(r => [...r]);
     newGridData[row][col] = value.toUpperCase();
     setGridData(newGridData);
-    // Reset the flag when user makes changes after seeing a result
-    if (hasShownResult) {
-      setHasShownResult(false);
-    }
-  }
-
-  function handlePluswordChange(index, value) {
-    // Always maintain exactly 5 characters (spaces for empty cells)
-    const cells = pluswordData.split('');
-    while (cells.length < 5) cells.push(' ');
-    cells[index] = value ? value.toUpperCase() : ' ';
-    const newPluswordData = cells.slice(0, 5).join('');
-    setPluswordData(newPluswordData);
     // Reset the flag when user makes changes after seeing a result
     if (hasShownResult) {
       setHasShownResult(false);
@@ -165,7 +149,6 @@ function App() {
               onCellChange=${handleGridCellChange}
               onCellFocus=${(row, col) => {
       setActiveCell({ row, col });
-      setActivePluswordIndex(null);
     }}
               onCellClick=${(row, col) => {
       if (prevActiveOnMouseDown && prevActiveOnMouseDown.row === row && prevActiveOnMouseDown.col === col) {
@@ -173,37 +156,33 @@ function App() {
       }
       setPrevActiveOnMouseDown({ row, col });
       setActiveCell({ row, col });
-      setActivePluswordIndex(null);
     }}
               setCurrentMode=${setCurrentMode}
             />
-
-            <div class="w-full flex justify-center">
-              <div class="bg-gray-100 rounded-lg" style="width: min(90vw, 400px);">
-                <${PluswordInput}
-                  pluswordData=${pluswordData}
-                  onChange=${handlePluswordChange}
-                  activePluswordIndex=${activePluswordIndex}
-                  onFocus=${(index) => {
-      setActivePluswordIndex(index);
-      setActiveCell({ row: null, col: null });
-    }}
-                />
-                <${SelectedClue} puzzle=${puzzle} activeCell=${activeCell} currentMode=${currentMode} />
+            ${activeCell.row !== null && activeCell.row !== 5 && html`
+              <div class="w-full flex justify-center">
+                <div class="bg-gray-100 rounded-lg px-4 py-2" style="width: min(90vw, 400px);">
+                  <${SelectedClue} puzzle=${puzzle} activeCell=${activeCell} currentMode=${currentMode} />
+                </div>
               </div>
-            </div>
+            `}
 
             <div class="mt-6 text-gray-600 font-mono text-xl">${timerDisplay}</div>
           </div>
 
-          <${Clues} puzzle=${puzzle} onClueClick=${(orientation, position) => {
+          <${Clues}
+            puzzle=${puzzle}
+            onClueClick=${(orientation, position) => {
       setCurrentMode(orientation);
       if (orientation === 'across') {
         setActiveCell({ row: position, col: 0 });
       } else {
         setActiveCell({ row: 0, col: position });
       }
-    }} activeCell=${activeCell} currentMode=${currentMode} />
+    }}
+            activeCell=${activeCell}
+            currentMode=${currentMode}
+          />
         </div>
       </main>
 
@@ -235,7 +214,7 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
   const cellRefs = useRef({});
 
   function getHintClass(row, col) {
-    if (!puzzle) return '';
+    if (!puzzle || row === 5) return ''; // No hints for plusword row
 
     let hint = null;
 
@@ -255,16 +234,25 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
 
     const style = {};
 
-    if (currentMode === 'across' && activeCell.row === row) {
+    // For plusword (row 5), highlight all cells
+    if (row === 5 && activeCell.row === 5) {
       style.borderTop = '3px solid black';
       style.borderBottom = '3px solid black';
       if (col === 0) style.borderLeft = '3px solid black';
       if (col === 4) style.borderRight = '3px solid black';
-    } else if (currentMode === 'down' && activeCell.col === col) {
-      style.borderLeft = '3px solid black';
-      style.borderRight = '3px solid black';
-      if (row === 0) style.borderTop = '3px solid black';
-      if (row === 4) style.borderBottom = '3px solid black';
+    } else if (row !== 5) {
+      // Regular grid behavior (rows 0-4)
+      if (currentMode === 'across' && activeCell.row === row) {
+        style.borderTop = '3px solid black';
+        style.borderBottom = '3px solid black';
+        if (col === 0) style.borderLeft = '3px solid black';
+        if (col === 4) style.borderRight = '3px solid black';
+      } else if (currentMode === 'down' && activeCell.col === col) {
+        style.borderLeft = '3px solid black';
+        style.borderRight = '3px solid black';
+        if (row === 0) style.borderTop = '3px solid black';
+        if (row === 4) style.borderBottom = '3px solid black';
+      }
     }
 
     return style;
@@ -276,7 +264,12 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
       onCellChange(row, col, e.key);
 
       // Auto-advance
-      if (currentMode === 'across') {
+      if (row === 5) {
+        // Plusword row - move right
+        if (col < 4) {
+          cellRefs.current[`${row}-${col + 1}`]?.focus();
+        }
+      } else if (currentMode === 'across') {
         if (col < 4) {
           const key = `${row}-${col + 1}`;
           cellRefs.current[key]?.focus();
@@ -284,9 +277,8 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
           const key = `${row + 1}-0`;
           cellRefs.current[key]?.focus();
         } else {
-          // At last cell of grid, move to plusword
-          const firstPlusword = document.querySelector('[data-plusword-index="0"]');
-          if (firstPlusword) firstPlusword.focus();
+          // At last cell of grid (row 4, col 4), move to plusword
+          cellRefs.current[`5-0`]?.focus();
         }
       } else {
         if (row < 4) {
@@ -297,8 +289,7 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
           cellRefs.current[key]?.focus();
         } else {
           // At last cell of grid, move to plusword
-          const firstPlusword = document.querySelector('[data-plusword-index="0"]');
-          if (firstPlusword) firstPlusword.focus();
+          cellRefs.current[`5-0`]?.focus();
         }
       }
 
@@ -309,33 +300,32 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
       case 'ArrowRight':
         if (col < 4) {
           e.preventDefault();
-          setCurrentMode('across');
+          if (row !== 5) setCurrentMode('across');
           cellRefs.current[`${row}-${col + 1}`]?.focus();
         }
         break;
       case 'ArrowLeft':
         if (col > 0) {
           e.preventDefault();
-          setCurrentMode('across');
+          if (row !== 5) setCurrentMode('across');
           cellRefs.current[`${row}-${col - 1}`]?.focus();
         }
         break;
       case 'ArrowDown':
-        if (row < 4) {
-          e.preventDefault();
-          setCurrentMode('down');
+        e.preventDefault();
+        if (row < 5) {
+          if (row < 4) {
+            setCurrentMode('down');
+          } else {
+            setCurrentMode('across');
+          }
           cellRefs.current[`${row + 1}-${col}`]?.focus();
-        } else {
-          // At last row, move to plusword at same column
-          e.preventDefault();
-          const pluswordCell = document.querySelector(`[data-plusword-index="${col}"]`);
-          if (pluswordCell) pluswordCell.focus();
         }
         break;
       case 'ArrowUp':
         if (row > 0) {
           e.preventDefault();
-          setCurrentMode('down');
+          if (row <= 5) setCurrentMode('down');
           cellRefs.current[`${row - 1}-${col}`]?.focus();
         }
         break;
@@ -345,7 +335,17 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
 
         // If current cell is empty, move back and delete previous cell
         if (!currentValue) {
-          if (currentMode === 'across') {
+          if (row === 5) {
+            // Plusword row - move left
+            if (col > 0) {
+              onCellChange(row, col - 1, '');
+              cellRefs.current[`${row}-${col - 1}`]?.focus();
+            } else {
+              // Move to last cell of regular grid
+              onCellChange(4, 4, '');
+              cellRefs.current[`4-4`]?.focus();
+            }
+          } else if (currentMode === 'across') {
             if (col > 0) {
               onCellChange(row, col - 1, '');
               cellRefs.current[`${row}-${col - 1}`]?.focus();
@@ -370,7 +370,8 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
     }
   }
 
-  const cells = [];
+  const regularCells = [];
+  // Regular grid cells (rows 0-4)
   for (let row = 0; row < 5; row++) {
     for (let col = 0; col < 5; col++) {
       const key = `${row}-${col}`;
@@ -378,7 +379,7 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
       const borderStyle = getBorderStyle(row, col);
       const isActive = activeCell.row === row && activeCell.col === col;
 
-      cells.push(html`
+      regularCells.push(html`
         <div class="cell-wrapper relative" key=${key}>
           ${col === 0 && html`<div class="cell-number">${row + 1}</div>`}
           ${row === 0 && col > 0 && html`<div class="cell-number">${col + 1}</div>`}
@@ -401,105 +402,50 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
     }
   }
 
-  return html`
-    <div class="crossword-grid inline-grid grid-cols-5 gap-0 border-2 border-black mb-8">
-      ${cells}
-    </div>
-  `;
-}
+  // Plusword cells (row 5)
+  const pluswordCells = [];
+  for (let col = 0; col < 5; col++) {
+    const key = `5-${col}`;
+    const borderStyle = getBorderStyle(5, col);
+    const isActive = activeCell.row === 5 && activeCell.col === col;
 
-function PluswordInput({ pluswordData, onChange, activePluswordIndex, onFocus }) {
-  const cellRefs = useRef([]);
-
-  function handleKeyDown(e, index) {
-    if (e.key.length === 1 && e.key.match(/[a-zA-Z]/)) {
-      e.preventDefault();
-      onChange(index, e.key);
-      if (index < 4) {
-        cellRefs.current[index + 1]?.focus();
-      }
-      return;
-    }
-
-    switch (e.key) {
-      case 'ArrowRight':
-        if (index < 4) {
-          e.preventDefault();
-          cellRefs.current[index + 1]?.focus();
-        }
-        break;
-      case 'ArrowLeft':
-        if (index > 0) {
-          e.preventDefault();
-          cellRefs.current[index - 1]?.focus();
-        }
-        break;
-      case 'Backspace':
-        e.preventDefault();
-        const currentValue = pluswordData[index] || '';
-        if (!currentValue && index > 0) {
-          onChange(index - 1, '');
-          cellRefs.current[index - 1]?.focus();
-        } else {
-          onChange(index, '');
-        }
-        break;
-      case 'ArrowUp':
-        // Move to grid cell directly above (row 4, same column)
-        e.preventDefault();
-        const gridCell = document.querySelector(`[data-row="4"][data-col="${index}"]`);
-        if (gridCell) gridCell.focus();
-        break;
-    }
-  }
-
-  function getBorderStyle(index) {
-    if (activePluswordIndex === null) return {};
-
-    const style = {};
-    // Apply thicker border to all cells in plusword when any is active
-    style.borderTop = '3px solid black';
-    style.borderBottom = '3px solid black';
-    if (index === 0) style.borderLeft = '3px solid black';
-    if (index === 4) style.borderRight = '3px solid black';
-
-    return style;
-  }
-
-  const cells = [];
-  for (let i = 0; i < 5; i++) {
-    const borderStyle = getBorderStyle(i);
-    const isActive = activePluswordIndex === i;
-
-    cells.push(html`
+    pluswordCells.push(html`
       <input
-        key=${i}
-        ref=${el => cellRefs.current[i] = el}
+        key=${key}
+        ref=${el => cellRefs.current[key] = el}
         type="text"
         maxLength="1"
-        value=${pluswordData[i] === ' ' ? '' : pluswordData[i]}
+        value=${gridData[5][col]}
         class="w-full h-full text-center text-3xl font-bold uppercase bg-white border border-black focus:outline-none ${isActive ? 'hatch' : ''}"
         style=${{ caretColor: 'transparent', ...borderStyle }}
-        data-plusword-index=${i}
+        data-row="5"
+        data-col=${col}
         onInput=${(e) => {
-        // Completely prevent any input changes - we handle everything in onKeyDown
+        // Prevent input changes - we handle everything in onKeyDown
         e.preventDefault();
         e.stopPropagation();
-        // Reset value to current state
-        const currentVal = pluswordData[i] === ' ' ? '' : pluswordData[i];
+        const currentVal = gridData[5][col];
         if (e.target.value !== currentVal) {
           e.target.value = currentVal;
         }
       }}
-        onKeyDown=${(e) => handleKeyDown(e, i)}
-        onFocus=${() => onFocus(i)}
+        onKeyDown=${(e) => handleKeyDown(e, 5, col)}
+        onFocus=${() => onCellFocus(5, col)}
+        onClick=${() => onCellClick(5, col)}
       />
     `);
   }
 
   return html`
-    <div class="h-20 plusword-grid inline-grid grid-cols-5 gap-0 border-2 border-black mb-8">
-      ${cells}
+    <div class="flex flex-col items-center gap-8 mb-8">
+      <div class="crossword-grid inline-grid grid-cols-5 gap-0 border-2 border-black">
+        ${regularCells}
+      </div>
+      <div class="w-full flex justify-center">
+        <div class="h-20 plusword-grid inline-grid grid-cols-5 gap-0 border-2 border-black" style="width: min(90vw, 400px);">
+          ${pluswordCells}
+        </div>
+      </div>
     </div>
   `;
 }
