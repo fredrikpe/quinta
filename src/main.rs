@@ -3,12 +3,12 @@ mod models;
 
 use actix_files as fs;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
-use models::{DailyPuzzle, WordWithPosition};
+use models::DailyPuzzle;
 use rusqlite::Connection;
+use std::sync::Mutex;
 use std::time::Instant;
-use std::{collections::HashSet, sync::Mutex};
 
-use crate::models::{ClueWord, Hint, Puzzle};
+use crate::models::{ClueWord, Puzzle};
 
 type AppResult<T> = Result<T, String>;
 
@@ -70,7 +70,7 @@ fn get_word_and_clue_by_id(conn: &Connection, id: i64) -> AppResult<(String, Str
     .map_err(|e| e.to_string())
 }
 
-fn load_todays_puzzle(date: &str) -> AppResult<Option<Puzzle>> {
+fn load_todays_puzzle(date: &str) -> AppResult<Option<DailyPuzzle>> {
     let conn = Connection::open("quinta.db").map_err(|e| e.to_string())?;
 
     let mut stmt = conn
@@ -100,12 +100,12 @@ fn load_todays_puzzle(date: &str) -> AppResult<Option<Puzzle>> {
             }
         }
 
-        Ok(Puzzle {
+        Ok(add_hints(Puzzle {
             date: date.to_owned(),
             across_words,
             down_words,
             plusword,
-        })
+        }))
     });
 
     match result {
@@ -142,81 +142,6 @@ fn get_word_id(conn: &Connection, word: &str) -> AppResult<Option<i64>> {
         Ok(id) => Ok(Some(id)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.to_string()),
-    }
-}
-
-fn hints_across(plusword: &str, word: &str) -> Vec<Option<Hint>> {
-    let mut hints: Vec<Option<Hint>> = vec![None; word.len()];
-
-    let solution_chars: Vec<char> = plusword.chars().collect();
-    let word_chars: Vec<char> = word.chars().collect();
-
-    // 1. GREEN pass - check position match
-    for i in 0..word_chars.len().min(solution_chars.len()) {
-        if word_chars[i] == solution_chars[i] {
-            hints[i] = Some(Hint::Green);
-        }
-    }
-    // 2. YELLOW pass - check if char exists anywhere in plusword (not already GREEN)
-    for i in 0..word_chars.len() {
-        if hints[i].is_none() && solution_chars.contains(&word_chars[i]) {
-            hints[i] = Some(Hint::Yellow);
-        }
-    }
-    hints
-}
-
-fn hints_down(plusword: &str, word: &str, col_index: usize) -> Vec<Option<Hint>> {
-    let mut hints: Vec<Option<Hint>> = vec![None; word.len()];
-
-    let solution_chars: Vec<char> = plusword.chars().collect();
-    let word_chars: Vec<char> = word.chars().collect();
-
-    // For down words, only check GREEN for the character at position col_index in plusword
-    if col_index < solution_chars.len() {
-        for (row, &ch) in word_chars.iter().enumerate() {
-            if ch == solution_chars[col_index] {
-                hints[row] = Some(Hint::Green);
-            }
-        }
-    }
-
-    // YELLOW pass - check if char exists anywhere in plusword (not already GREEN)
-    for row in 0..word_chars.len() {
-        if hints[row].is_none() && solution_chars.contains(&word_chars[row]) {
-            hints[row] = Some(Hint::Yellow);
-        }
-    }
-    hints
-}
-
-fn add_hints(puzzle: Puzzle) -> DailyPuzzle {
-    let mut across_with_clues = Vec::new();
-    let mut down_with_clues = Vec::new();
-
-    for (i, clue_word) in puzzle.across_words.iter().enumerate() {
-        across_with_clues.push(WordWithPosition {
-            word: clue_word.word.clone(),
-            clue: clue_word.clue.clone(),
-            hints: hints_across(&puzzle.plusword, &clue_word.word),
-            position: i,
-        });
-    }
-
-    for (i, clue_word) in puzzle.down_words.iter().enumerate() {
-        down_with_clues.push(WordWithPosition {
-            word: clue_word.word.clone(),
-            clue: clue_word.clue.clone(),
-            hints: hints_down(&puzzle.plusword, &clue_word.word, i),
-            position: i,
-        });
-    }
-
-    DailyPuzzle {
-        date: puzzle.date,
-        across_words: across_with_clues,
-        down_words: down_with_clues,
-        plusword: puzzle.plusword,
     }
 }
 
@@ -296,15 +221,33 @@ fn create_todays_puzzle() -> AppResult<DailyPuzzle> {
         total_elapsed.as_secs_f64()
     );
 
-    // Return with hints
     Ok(add_hints(puzzle))
+}
+
+fn add_hints(puzzle: Puzzle) -> DailyPuzzle {
+    let hints = generator::hints(
+        &puzzle.plusword,
+        &puzzle
+            .across_words
+            .iter()
+            .map(|cw| cw.word.clone())
+            .collect(),
+    );
+
+    DailyPuzzle {
+        date: puzzle.date,
+        across_words: puzzle.across_words,
+        down_words: puzzle.down_words,
+        hints: hints.into_iter().map(|row| row.to_vec()).collect(),
+        plusword: puzzle.plusword,
+    }
 }
 
 async fn get_today_puzzle(_data: web::Data<AppState>) -> impl Responder {
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
     let puzzle = match load_todays_puzzle(&today) {
-        Ok(Some(puzzle)) => Ok(add_hints(puzzle)),
+        Ok(Some(puzzle)) => Ok(puzzle),
         Ok(None) => create_todays_puzzle(),
         Err(e) => Err(e),
     };

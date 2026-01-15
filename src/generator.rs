@@ -1,6 +1,36 @@
 use std::{collections::HashSet, time::Instant};
 
-use crate::models::ClueWord;
+use crate::models::{ClueWord, Hint};
+
+pub fn hints(plusword: &str, across_words: &Vec<String>) -> [[Option<Hint>; 5]; 5] {
+    let mut grid: [[Option<Hint>; 5]; 5] = [[None; 5]; 5];
+
+    for (i, word) in across_words.iter().enumerate() {
+        grid[i] = hints_across(&plusword, &word);
+    }
+    grid
+}
+
+fn hints_across(plusword: &str, word: &str) -> [Option<Hint>; 5] {
+    let mut hints: [Option<Hint>; 5] = [None; 5];
+
+    let solution_chars: Vec<char> = plusword.chars().collect();
+    let word_chars: Vec<char> = word.chars().collect();
+
+    // 1. GREEN pass - check position match
+    for i in 0..word_chars.len().min(solution_chars.len()) {
+        if word_chars[i] == solution_chars[i] {
+            hints[i] = Some(Hint::Green);
+        }
+    }
+    // 2. YELLOW pass - check if char exists anywhere in plusword (not already GREEN)
+    for i in 0..word_chars.len() {
+        if hints[i].is_none() && solution_chars.contains(&word_chars[i]) {
+            hints[i] = Some(Hint::Yellow);
+        }
+    }
+    hints
+}
 
 pub fn generate_crossword(clue_words: &[ClueWord]) -> Option<(Vec<ClueWord>, Vec<ClueWord>)> {
     use rand::seq::SliceRandom;
@@ -37,7 +67,6 @@ pub fn generate_crossword(clue_words: &[ClueWord]) -> Option<(Vec<ClueWord>, Vec
             if !test(&prefix_set, grid) {
                 continue;
             }
-
             for i2 in 0..n {
                 index2 = i2;
                 set_across(&mut grid, 2, &shuffled[i2].word);
@@ -112,6 +141,18 @@ fn test(prefix_set: &HashSet<String>, grid: [[char; 5]; 5]) -> bool {
             break;
         }
     }
+    let mut used_words = vec![];
+    if depth == 5 {
+        for i in 0..5 {
+            used_words.push(
+                format!(
+                    "{}{}{}{}{}",
+                    grid[i][0], grid[i][1], grid[i][2], grid[i][3], grid[i][4]
+                )
+                .to_string(),
+            );
+        }
+    }
 
     for j in 0..5 {
         let mut down: [char; 5] = ['-'; 5];
@@ -120,6 +161,9 @@ fn test(prefix_set: &HashSet<String>, grid: [[char; 5]; 5]) -> bool {
         }
         let prefix: String = down[..depth].iter().collect();
         if !prefix_set.contains(&prefix) {
+            return false;
+        }
+        if used_words.contains(&prefix) {
             return false;
         }
     }

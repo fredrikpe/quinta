@@ -239,16 +239,8 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
 
     let hint = null;
 
-    // Check across hints
-    if (puzzle.across_words && puzzle.across_words[row]) {
-      const acrossHint = puzzle.across_words[row].hints?.[col];
-      if (acrossHint) hint = acrossHint;
-    }
-
-    // Check down hints (may override)
-    if (puzzle.down_words && puzzle.down_words[col]) {
-      const downHint = puzzle.down_words[col].hints?.[row];
-      if (downHint) hint = downHint;
+    if (puzzle.hints && puzzle.hints[row][col]) {
+      hint = puzzle.hints[row][col];
     }
 
     if (!hint) return '';
