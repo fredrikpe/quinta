@@ -1,12 +1,6 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Puzzle2 {
-    pub across_words: Vec<ClueWord>,
-    pub down_words: Vec<ClueWord>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub struct Puzzle {
     pub date: String,
     pub across_words: Vec<ClueWord>,
@@ -30,7 +24,7 @@ pub struct DailyPuzzle {
     pub plusword: String,
 }
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
 pub enum Hint {
     Yellow,
     Green,

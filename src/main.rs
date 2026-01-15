@@ -38,21 +38,23 @@ fn load_all_clues() -> AppResult<Vec<ClueWord>> {
     }
 }
 
-fn load_random_word() -> AppResult<String> {
+fn load_words() -> AppResult<Vec<String>> {
     let conn = Connection::open("quinta.db").map_err(|e| format!("db connection failed: {}", e))?;
 
     let mut stmt = conn
-        .prepare("SELECT * FROM word ORDER BY RANDOM() LIMIT 1")
+        .prepare("SELECT * FROM word")
         .map_err(|e| e.to_string())?;
 
-    let result = stmt.query_row([], |row| {
-        let word: String = row.get(1)?;
-        Ok(word)
-    });
+    let result = stmt
+        .query_map([], |row| {
+            let word: String = row.get(1)?;
+            Ok(word)
+        })
+        .and_then(|e| e.collect());
 
     match result {
         Ok(data) => Ok(data),
-        Err(rusqlite::Error::QueryReturnedNoRows) => panic!("get random word returned no word"),
+        Err(rusqlite::Error::QueryReturnedNoRows) => panic!("get words returned no word"),
         Err(e) => Err(e.to_string()),
     }
 }
@@ -189,12 +191,6 @@ fn create_todays_puzzle() -> AppResult<DailyPuzzle> {
     let clue_words = load_all_clues().expect("Failed to load clues");
     println!("Loaded {} clue-word pairs", clue_words.len());
 
-    let plusword = load_random_word()
-        .expect("Failed to load random word")
-        .to_uppercase();
-
-    println!("Selected plusword: {}", plusword);
-
     // Generate a valid crossword with brute force
     let (across_words, down_words) = match generator::generate_crossword(&clue_words) {
         Some(result) => result,
@@ -202,6 +198,19 @@ fn create_todays_puzzle() -> AppResult<DailyPuzzle> {
             return Err(format!("Failed to generate crossword, using fallback").to_string());
         }
     };
+
+    let words = load_words().expect("Failed to load words");
+
+    let plusword = generator::choose_plusword(
+        &words,
+        &across_words
+            .iter()
+            .map(|cw| cw.word.clone())
+            .collect::<Vec<String>>(),
+    )
+    .to_uppercase();
+
+    println!("Selected plusword: {}", plusword);
 
     let puzzle = Puzzle {
         date: today.clone(),

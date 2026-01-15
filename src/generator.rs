@@ -1,6 +1,39 @@
-use std::{collections::HashSet, time::Instant};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Instant,
+};
 
 use crate::models::{ClueWord, Hint};
+
+pub fn choose_plusword(words: &Vec<String>, across_words: &Vec<String>) -> String {
+    let mut map: HashMap<usize, i32> = HashMap::new();
+
+    for (index, plusword) in words.iter().enumerate() {
+        let plusword_hints = hints(plusword, across_words);
+        let mut count = 0;
+        for word in words.iter() {
+            let hints = hints(word, across_words);
+            if hints_eq(hints, plusword_hints) {
+                count += 1;
+            }
+        }
+        map.insert(index, count);
+    }
+    let min = map.iter().min_by_key(|(_, v)| **v).unwrap();
+
+    words[*min.0].to_owned()
+}
+
+fn hints_eq(hint_a: [[Option<Hint>; 5]; 5], hint_b: [[Option<Hint>; 5]; 5]) -> bool {
+    for i in 0..5 {
+        for j in 0..5 {
+            if hint_a[i][j] != hint_b[i][j] {
+                return false;
+            }
+        }
+    }
+    true
+}
 
 pub fn hints(plusword: &str, across_words: &Vec<String>) -> [[Option<Hint>; 5]; 5] {
     let mut grid: [[Option<Hint>; 5]; 5] = [[None; 5]; 5];
@@ -19,7 +52,7 @@ fn hints_across(plusword: &str, word: &str) -> [Option<Hint>; 5] {
 
     // 1. GREEN pass - check position match
     for i in 0..word_chars.len().min(solution_chars.len()) {
-        if word_chars[i] == solution_chars[i] {
+        if word_chars[i].eq_ignore_ascii_case(&solution_chars[i]) {
             hints[i] = Some(Hint::Green);
         }
     }
@@ -105,11 +138,11 @@ pub fn generate_crossword(clue_words: &[ClueWord]) -> Option<(Vec<ClueWord>, Vec
         shuffled[index4].clone(),
     ];
     let down_words = vec![
-        down_word_at_i(&grid, 0),
-        down_word_at_i(&grid, 1),
-        down_word_at_i(&grid, 2),
-        down_word_at_i(&grid, 3),
-        down_word_at_i(&grid, 4),
+        down_word_at_i(&grid, 0).to_uppercase(),
+        down_word_at_i(&grid, 1).to_uppercase(),
+        down_word_at_i(&grid, 2).to_uppercase(),
+        down_word_at_i(&grid, 3).to_uppercase(),
+        down_word_at_i(&grid, 4).to_uppercase(),
     ]
     .iter()
     .map(|w| {
