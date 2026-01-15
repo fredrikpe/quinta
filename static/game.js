@@ -15,6 +15,7 @@ function App() {
   const [modal, setModal] = useState({ visible: false, icon: '', title: '', message: '', timeStr: null });
   const [copyButtonText, setCopyButtonText] = useState('Copy');
   const [hasShownResult, setHasShownResult] = useState(false);
+  const cellRefsFromGrid = useRef(null);
 
   // Load puzzle on mount
   useEffect(() => {
@@ -130,6 +131,13 @@ function App() {
     }
   }
 
+  function focusCell(row, col) {
+    if (cellRefsFromGrid.current) {
+      const key = `${row}-${col}`;
+      cellRefsFromGrid.current[key]?.focus();
+    }
+  }
+
   const minutes = Math.floor(elapsed / 60);
   const seconds = elapsed % 60;
   const timerDisplay = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
@@ -158,6 +166,7 @@ function App() {
       setActiveCell({ row, col });
     }}
               setCurrentMode=${setCurrentMode}
+              cellRefsFromGrid=${cellRefsFromGrid}
             />
             ${activeCell.row !== null && activeCell.row !== 5 && html`
               <div class="w-full flex justify-center">
@@ -176,8 +185,12 @@ function App() {
       setCurrentMode(orientation);
       if (orientation === 'across') {
         setActiveCell({ row: position, col: 0 });
+        // Focus the first cell of the across word after a short delay
+        setTimeout(() => focusCell(position, 0), 0);
       } else {
         setActiveCell({ row: 0, col: position });
+        // Focus the first cell of the down word after a short delay
+        setTimeout(() => focusCell(0, position), 0);
       }
     }}
             activeCell=${activeCell}
@@ -210,8 +223,15 @@ function Header({ puzzleNumber }) {
   `;
 }
 
-function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange, onCellFocus, onCellClick, setCurrentMode }) {
+function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange, onCellFocus, onCellClick, setCurrentMode, cellRefsFromGrid }) {
   const cellRefs = useRef({});
+
+  // Share cellRefs with parent component
+  useEffect(() => {
+    if (cellRefsFromGrid) {
+      cellRefsFromGrid.current = cellRefs.current;
+    }
+  }, [cellRefsFromGrid]);
 
   function getHintClass(row, col) {
     if (!puzzle || row === 5) return ''; // No hints for plusword row
@@ -476,12 +496,12 @@ function Clues({ puzzle, onClueClick, activeCell, currentMode }) {
         <h2 class="text-2xl font-bold mb-4">Across</h2>
         <div class="space-y-2">
           ${puzzle.across_words.map((wordData, index) => {
-    const isActive = currentMode === 'across' && activeCell.row === wordData.position;
+    const isActive = currentMode === 'across' && activeCell.row === index;
     return html`
               <div
                 key=${index}
                 class="p-2 hover:bg-gray-100 rounded cursor-pointer ${isActive ? 'bg-blue-200 font-bold' : ''}"
-                onClick=${() => onClueClick('across', wordData.position)}
+                onClick=${() => onClueClick('across', index)}
               >
                 <span class="font-bold mr-2">${index + 1}.</span>
                 <span>${wordData.clue}</span>
@@ -494,12 +514,12 @@ function Clues({ puzzle, onClueClick, activeCell, currentMode }) {
         <h2 class="text-2xl font-bold mb-4">Down</h2>
         <div class="space-y-2">
           ${puzzle.down_words.map((wordData, index) => {
-    const isActive = currentMode === 'down' && activeCell.col === wordData.position;
+    const isActive = currentMode === 'down' && activeCell.col === index;
     return html`
               <div
                 key=${index}
                 class="p-2 hover:bg-gray-100 rounded cursor-pointer ${isActive ? 'bg-blue-200 font-bold' : ''}"
-                onClick=${() => onClueClick('down', wordData.position)}
+                onClick=${() => onClueClick('down', index)}
               >
                 <span class="font-bold mr-2">${index + 1}.</span>
                 <span>${wordData.clue}</span>
