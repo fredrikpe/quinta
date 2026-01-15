@@ -168,7 +168,13 @@ fn main() -> Result<()> {
         }
 
         // Insert the complete puzzle with word IDs
-        insert_puzzle(&conn, &puzzle.date, &plusword, &across_word_ids, &down_word_ids)?;
+        insert_puzzle(
+            &conn,
+            &puzzle.date,
+            &plusword,
+            &across_word_ids,
+            &down_word_ids,
+        )?;
 
         println!("  ✓ Imported: {} (plusword: {})", puzzle.date, plusword);
         imported_count += 1;
