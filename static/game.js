@@ -6,6 +6,7 @@ const html = htm.bind(h);
 
 function App() {
   const [puzzle, setPuzzle] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [gridData, setGridData] = useState(Array(6).fill().map(() => Array(5).fill(''))); // 6 rows: 0-4 regular, 5 plusword
   const [startTime, setStartTime] = useState(null);
   const [elapsed, setElapsed] = useState(0);
@@ -37,6 +38,7 @@ function App() {
 
   async function loadPuzzle() {
     try {
+      setLoading(true);
       const response = await fetch('/api/puzzle/today');
       if (!response.ok) throw new Error('Failed to load puzzle');
       const data = await response.json();
@@ -44,6 +46,8 @@ function App() {
     } catch (error) {
       console.error('Error loading puzzle:', error);
       showModal('❌', 'Error', 'Failed to load puzzle. Please refresh the page.');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -141,6 +145,20 @@ function App() {
   const minutes = Math.floor(elapsed / 60);
   const seconds = elapsed % 60;
   const timerDisplay = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+  if (loading) {
+    return html`
+      <div class="max-w-7xl mx-auto">
+        <${Header} puzzleNumber="1328" />
+        <div class="flex items-center justify-center min-h-[400px]">
+          <div class="flex flex-col items-center gap-4">
+            <div class="w-16 h-16 border-4 border-gray-300 border-t-gray-900 rounded-full animate-spin"></div>
+            <p class="text-gray-600 text-lg">Loading puzzle...</p>
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
   return html`
     <div class="max-w-7xl mx-auto">
