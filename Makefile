@@ -21,6 +21,7 @@ build:
 deploy: build
 	rsync -avz static $(HOST):$(REMOTE_DIR)/
 	rsync -avz target/$(TARGET)/release/$(BIN) $(HOST):$(REMOTE_DIR)/
+	ssh $(HOST) "sudo systemctl restart quinta"
 
 clean:
 	cargo clean
