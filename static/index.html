@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Quinta - Daily Word Puzzle</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -39,13 +39,23 @@
         #root .crossword-grid {
             aspect-ratio: 1 / 1;
             width: 100%;
-            max-width: min(90vw, 400px);
+            max-width: min(75vw, 280px);
         }
 
         /* Match plusword width to main grid */
         #root .plusword-grid {
             width: 100%;
-            max-width: min(90vw, 400px);
+            max-width: min(75vw, 280px);
+        }
+
+        /* Larger grid on desktop */
+        @media (min-width: 768px) {
+            #root .crossword-grid {
+                max-width: min(90vw, 400px);
+            }
+            #root .plusword-grid {
+                max-width: min(90vw, 400px);
+            }
         }
 
         /* Ensure grid cells maintain square aspect ratio */
@@ -62,9 +72,21 @@
             transparent 20px
           );
         }
+
+        /* Add padding for on-screen keyboard - only on mobile/touch devices */
+        @media (max-width: 768px) {
+            .keyboard-padding {
+                padding-bottom: 220px;
+            }
+        }
+        @media (pointer: coarse) {
+            .keyboard-padding {
+                padding-bottom: 220px;
+            }
+        }
     </style>
 </head>
-<body class="min-h-screen bg-gray-50 p-4">
+<body class="min-h-screen bg-gray-50 p-2 md:p-4 keyboard-padding">
     <div id="root"></div>
     <script type="module" src="/game.js"></script>
 </body>

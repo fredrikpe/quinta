@@ -12,29 +12,58 @@ function App() {
   const [elapsed, setElapsed] = useState(0);
   const [currentMode, setCurrentMode] = useState('across');
   const [activeCell, setActiveCell] = useState({ row: null, col: null });
-  const [prevActiveOnMouseDown, setPrevActiveOnMouseDown] = useState(null);
+  const [prevClickedCell, setPrevClickedCell] = useState(null);
   const [modal, setModal] = useState({ visible: false, icon: '', title: '', message: '', timeStr: null });
   const [copyButtonText, setCopyButtonText] = useState('Copy');
   const [hasShownResult, setHasShownResult] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const cellRefsFromGrid = useRef(null);
+  const pausedTimeRef = useRef(0);
+  const pauseStartRef = useRef(null);
 
   // Load puzzle on mount
   useEffect(() => {
     loadPuzzle();
   }, []);
 
-  // Start timer
+  // Timer with pause on visibility change
   useEffect(() => {
     if (!startTime) {
       setStartTime(Date.now());
     }
+
+    // Handle visibility change for pause/resume
+    const handleVisibilityChange = () => {
+      if (isCompleted) return; // Don't track pauses after completion
+
+      if (document.hidden) {
+        setIsPaused(true);
+        pauseStartRef.current = Date.now();
+      } else {
+        if (pauseStartRef.current) {
+          pausedTimeRef.current += Date.now() - pauseStartRef.current;
+          pauseStartRef.current = null;
+        }
+        setIsPaused(false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     const interval = setInterval(() => {
-      if (startTime) {
-        setElapsed(Math.floor((Date.now() - startTime) / 1000));
+      if (startTime && !isCompleted && !isPaused) {
+        const now = Date.now();
+        const totalPaused = pausedTimeRef.current + (pauseStartRef.current ? now - pauseStartRef.current : 0);
+        setElapsed(Math.floor((now - startTime - totalPaused) / 1000));
       }
     }, 1000);
-    return () => clearInterval(interval);
-  }, [startTime]);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [startTime, isCompleted, isPaused]);
 
   async function loadPuzzle() {
     try {
@@ -113,6 +142,7 @@ function App() {
       const success = validatePuzzle(gridData);
 
       if (success) {
+        setIsCompleted(true); // Stop the timer permanently
         const minutes = Math.floor(elapsed / 60);
         const seconds = elapsed % 60;
         const timeStr = `${minutes}:${String(seconds).padStart(2, '0')}`;
@@ -140,6 +170,183 @@ function App() {
       const key = `${row}-${col}`;
       cellRefsFromGrid.current[key]?.focus();
     }
+  }
+
+  // Get ordered list of clues (all across, then all down)
+  function getClueList() {
+    if (!puzzle) return [];
+    const clues = [];
+    // Across clues (0-4)
+    for (let i = 0; i < puzzle.across_words.length; i++) {
+      clues.push({ orientation: 'across', position: i });
+    }
+    // Down clues (0-4)
+    for (let i = 0; i < puzzle.down_words.length; i++) {
+      clues.push({ orientation: 'down', position: i });
+    }
+    return clues;
+  }
+
+  // Find current clue index based on activeCell and currentMode
+  function getCurrentClueIndex() {
+    const clues = getClueList();
+    if (activeCell.row === null || activeCell.row === 5) return -1;
+
+    for (let i = 0; i < clues.length; i++) {
+      const clue = clues[i];
+      if (clue.orientation === 'across' && currentMode === 'across' && clue.position === activeCell.row) {
+        return i;
+      }
+      if (clue.orientation === 'down' && currentMode === 'down' && clue.position === activeCell.col) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  // Navigate to next/previous clue
+  function navigateClue(direction) {
+    const clues = getClueList();
+    if (clues.length === 0) return;
+
+    let currentIndex = getCurrentClueIndex();
+    if (currentIndex === -1) currentIndex = 0;
+
+    let nextIndex;
+    if (direction === 'next') {
+      nextIndex = (currentIndex + 1) % clues.length;
+    } else {
+      nextIndex = (currentIndex - 1 + clues.length) % clues.length;
+    }
+
+    const nextClue = clues[nextIndex];
+    setCurrentMode(nextClue.orientation);
+    if (nextClue.orientation === 'across') {
+      setActiveCell({ row: nextClue.position, col: 0 });
+      setTimeout(() => focusCell(nextClue.position, 0), 0);
+    } else {
+      setActiveCell({ row: 0, col: nextClue.position });
+      setTimeout(() => focusCell(0, nextClue.position), 0);
+    }
+  }
+
+  // Handle on-screen keyboard input
+  function handleOnScreenKey(key) {
+    if (activeCell.row === null) {
+      // Focus first cell if none active
+      setActiveCell({ row: 0, col: 0 });
+      setTimeout(() => focusCell(0, 0), 0);
+      return;
+    }
+
+    const { row, col } = activeCell;
+
+    if (key === 'ENTER') {
+      // Move to next clue
+      navigateClue('next');
+      return;
+    }
+
+    if (key === 'BACKSPACE') {
+      // Trigger backspace behavior
+      const currentValue = gridData[row][col];
+      if (!currentValue) {
+        // Move back and delete
+        if (row === 5) {
+          if (col > 0) {
+            handleGridCellChange(row, col - 1, '');
+            setActiveCell({ row, col: col - 1 });
+            setTimeout(() => focusCell(row, col - 1), 0);
+          }
+        } else if (currentMode === 'across') {
+          if (col > 0) {
+            handleGridCellChange(row, col - 1, '');
+            setActiveCell({ row, col: col - 1 });
+            setTimeout(() => focusCell(row, col - 1), 0);
+          } else if (row > 0) {
+            handleGridCellChange(row - 1, 4, '');
+            setActiveCell({ row: row - 1, col: 4 });
+            setTimeout(() => focusCell(row - 1, 4), 0);
+          }
+        } else {
+          if (row > 0) {
+            handleGridCellChange(row - 1, col, '');
+            setActiveCell({ row: row - 1, col });
+            setTimeout(() => focusCell(row - 1, col), 0);
+          } else if (col > 0) {
+            handleGridCellChange(4, col - 1, '');
+            setActiveCell({ row: 4, col: col - 1 });
+            setTimeout(() => focusCell(4, col - 1), 0);
+          }
+        }
+      } else {
+        handleGridCellChange(row, col, '');
+      }
+      return;
+    }
+
+    // Letter key
+    handleGridCellChange(row, col, key);
+
+    // Auto-advance
+    let nextRow = row;
+    let nextCol = col;
+    if (row === 5) {
+      if (col < 4) nextCol = col + 1;
+    } else if (currentMode === 'across') {
+      if (col < 4) {
+        nextCol = col + 1;
+      } else if (row < 4) {
+        nextRow = row + 1;
+        nextCol = 0;
+      } else {
+        nextRow = 5;
+        nextCol = 0;
+      }
+    } else {
+      if (row < 4) {
+        nextRow = row + 1;
+      } else if (col < 4) {
+        nextRow = 0;
+        nextCol = col + 1;
+      } else {
+        nextRow = 5;
+        nextCol = 0;
+      }
+    }
+
+    if (nextRow !== row || nextCol !== col) {
+      setActiveCell({ row: nextRow, col: nextCol });
+      setTimeout(() => focusCell(nextRow, nextCol), 0);
+    }
+  }
+
+  // Handle touch/click for mode toggle
+  function handleCellTap(row, col) {
+    if (row === 5) {
+      // Plusword row - always horizontal
+      setPrevClickedCell({ row, col });
+      setActiveCell({ row, col });
+      return;
+    }
+
+    // Toggle mode only if tapping the same cell that was previously clicked
+    if (prevClickedCell && prevClickedCell.row === row && prevClickedCell.col === col) {
+      setCurrentMode(currentMode === 'across' ? 'down' : 'across');
+    }
+    setPrevClickedCell({ row, col });
+    setActiveCell({ row, col });
+  }
+
+  // Get clue text for current active cell
+  function getClueText() {
+    if (!puzzle || activeCell.row === null || activeCell.row === 5) return '';
+    if (currentMode === 'across' && puzzle.across_words?.[activeCell.row]) {
+      return `${activeCell.row + 1}A. ${puzzle.across_words[activeCell.row].clue}`;
+    } else if (currentMode === 'down' && puzzle.down_words?.[activeCell.col]) {
+      return `${activeCell.col + 1}D. ${puzzle.down_words[activeCell.col].clue}`;
+    }
+    return '';
   }
 
   const minutes = Math.floor(elapsed / 60);
@@ -176,25 +383,20 @@ function App() {
               onCellFocus=${(row, col) => {
       setActiveCell({ row, col });
     }}
-              onCellClick=${(row, col) => {
-      if (prevActiveOnMouseDown && prevActiveOnMouseDown.row === row && prevActiveOnMouseDown.col === col) {
-        setCurrentMode(currentMode === 'across' ? 'down' : 'across');
-      }
-      setPrevActiveOnMouseDown({ row, col });
-      setActiveCell({ row, col });
-    }}
+              onCellTap=${handleCellTap}
               setCurrentMode=${setCurrentMode}
               cellRefsFromGrid=${cellRefsFromGrid}
+              navigateClue=${navigateClue}
             />
             ${activeCell.row !== null && activeCell.row !== 5 && html`
-              <div class="w-full flex justify-center">
+              <div class="w-full flex justify-center hidden md:flex">
                 <div class="bg-gray-100 rounded-lg px-4 py-2" style="width: min(90vw, 400px);">
                   <${SelectedClue} puzzle=${puzzle} activeCell=${activeCell} currentMode=${currentMode} />
                 </div>
               </div>
             `}
 
-            <div class="mt-6 text-gray-600 font-mono text-xl">${timerDisplay}</div>
+            <div class="mt-4 md:mt-6 text-gray-600 font-mono text-lg md:text-xl">${timerDisplay}</div>
           </div>
 
           <${Clues}
@@ -217,6 +419,13 @@ function App() {
         </div>
       </main>
 
+      <${OnScreenKeyboard}
+        onKeyPress=${handleOnScreenKey}
+        clueText=${activeCell.row !== null && activeCell.row !== 5 ? getClueText() : null}
+        onPrevClue=${() => navigateClue('prev')}
+        onNextClue=${() => navigateClue('next')}
+      />
+
       <${Modal}
         visible=${modal.visible}
         icon=${modal.icon}
@@ -233,15 +442,15 @@ function App() {
 
 function Header({ puzzleNumber }) {
   return html`
-    <header class="text-center py-6">
-      <div class="inline-block bg-gray-900 text-white px-8 py-3 rounded-lg mb-4">
-        <h1 class="text-2xl font-bold tracking-wider">QUINTA NO. ${puzzleNumber}</h1>
+    <header class="text-center py-2 md:py-6">
+      <div class="inline-block bg-gray-900 text-white px-4 py-1.5 md:px-8 md:py-3 rounded-lg mb-2 md:mb-4">
+        <h1 class="text-base md:text-2xl font-bold tracking-wider">QUINTA NO. ${puzzleNumber}</h1>
       </div>
     </header>
   `;
 }
 
-function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange, onCellFocus, onCellClick, setCurrentMode, cellRefsFromGrid }) {
+function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange, onCellFocus, onCellTap, setCurrentMode, cellRefsFromGrid, navigateClue }) {
   const cellRefs = useRef({});
 
   // Share cellRefs with parent component
@@ -297,6 +506,17 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
   }
 
   function handleKeyDown(e, row, col) {
+    // Handle Tab / Shift+Tab for clue navigation
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        navigateClue('prev');
+      } else {
+        navigateClue('next');
+      }
+      return;
+    }
+
     if (e.key.length === 1 && e.key.match(/[a-zA-Z]/)) {
       e.preventDefault();
       onCellChange(row, col, e.key);
@@ -424,6 +644,7 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
           <input
             ref=${el => cellRefs.current[key] = el}
             type="text"
+            inputmode="none"
             maxLength="1"
             value=${gridData[row][col]}
             class="w-full h-full text-center text-2xl md:text-3xl font-bold uppercase bg-white border border-black focus:outline-none ${hintClass} ${isActive ? 'hatch' : ''}"
@@ -432,8 +653,12 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
             data-col=${col}
             onKeyDown=${(e) => handleKeyDown(e, row, col)}
             onFocus=${() => onCellFocus(row, col)}
-            onClick=${() => onCellClick(row, col)}
-            onTouchStart=${(e) => { e.preventDefault(); cellRefs.current[key]?.focus(); }}
+            onClick=${() => onCellTap(row, col)}
+            onTouchEnd=${(e) => {
+      e.preventDefault();
+      onCellTap(row, col);
+      cellRefs.current[key]?.focus();
+    }}
           />
         </div>
       `);
@@ -452,6 +677,7 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
         key=${key}
         ref=${el => cellRefs.current[key] = el}
         type="text"
+        inputmode="none"
         maxLength="1"
         value=${gridData[5][col]}
         class="w-full h-full text-center text-3xl font-bold uppercase bg-white border border-black focus:outline-none ${isActive ? 'hatch' : ''}"
@@ -469,18 +695,23 @@ function CrosswordGrid({ gridData, puzzle, currentMode, activeCell, onCellChange
       }}
         onKeyDown=${(e) => handleKeyDown(e, 5, col)}
         onFocus=${() => onCellFocus(5, col)}
-        onClick=${() => onCellClick(5, col)}
+        onClick=${() => onCellTap(5, col)}
+        onTouchEnd=${(e) => {
+        e.preventDefault();
+        onCellTap(5, col);
+        cellRefs.current[key]?.focus();
+      }}
       />
     `);
   }
 
   return html`
-    <div class="flex flex-col items-center gap-8 mb-8">
+    <div class="flex flex-col items-center gap-4 md:gap-8 mb-4 md:mb-8">
       <div class="crossword-grid inline-grid grid-cols-5 gap-0 border-2 border-black">
         ${regularCells}
       </div>
       <div class="w-full flex justify-center">
-        <div class="h-20 plusword-grid inline-grid grid-cols-5 gap-0 border-2 border-black" style="width: min(90vw, 400px);">
+        <div class="h-14 md:h-20 plusword-grid inline-grid grid-cols-5 gap-0 border-2 border-black">
           ${pluswordCells}
         </div>
       </div>
@@ -544,6 +775,129 @@ function Clues({ puzzle, onClueClick, activeCell, currentMode }) {
               </div>
             `;
   })}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function OnScreenKeyboard({ onKeyPress, clueText, onPrevClue, onNextClue }) {
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+
+  useEffect(() => {
+    // Check if device supports touch
+    const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    // Also check for small screen width as a fallback
+    const isSmallScreen = window.innerWidth <= 768;
+    setIsTouchDevice(hasTouch || isSmallScreen);
+
+    const handleResize = () => {
+      const isSmall = window.innerWidth <= 768;
+      setIsTouchDevice(hasTouch || isSmall);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Don't render on desktop
+  if (!isTouchDevice) return null;
+
+  const row1 = ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'];
+  const row2 = ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'];
+  const row3 = ['Z', 'X', 'C', 'V', 'B', 'N', 'M'];
+
+  function handleKeyClick(e, key) {
+    e.preventDefault();
+    e.stopPropagation();
+    onKeyPress(key);
+  }
+
+  function handleNavClick(e, direction) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (direction === 'prev') onPrevClue();
+    else onNextClue();
+  }
+
+  const keyClass = "flex items-center justify-center bg-gray-200 hover:bg-gray-300 active:bg-gray-400 rounded font-bold text-sm select-none touch-manipulation";
+  const navBtnClass = "flex items-center justify-center w-10 h-10 bg-gray-300 hover:bg-gray-400 active:bg-gray-500 rounded-full select-none touch-manipulation flex-shrink-0";
+
+  return html`
+    <div class="fixed bottom-0 left-0 right-0 bg-gray-100 border-t border-gray-300 z-40" style="padding-bottom: max(8px, env(safe-area-inset-bottom));">
+      <!-- Clue bar with navigation -->
+      ${clueText && html`
+        <div class="flex items-center gap-2 px-2 py-1.5 bg-gray-200 border-b border-gray-300">
+          <button
+            class="${navBtnClass}"
+            onTouchEnd=${(e) => handleNavClick(e, 'prev')}
+            onClick=${(e) => handleNavClick(e, 'prev')}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <div class="flex-1 text-center text-sm font-semibold text-gray-800 truncate px-1">
+            ${clueText}
+          </div>
+          <button
+            class="${navBtnClass}"
+            onTouchEnd=${(e) => handleNavClick(e, 'next')}
+            onClick=${(e) => handleNavClick(e, 'next')}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      `}
+      <!-- Keyboard -->
+      <div class="max-w-lg mx-auto space-y-1 p-1.5">
+        <div class="flex justify-center gap-0.5">
+          ${row1.map(key => html`
+            <button
+              key=${key}
+              class="${keyClass} w-[9.2%] h-11"
+              onTouchEnd=${(e) => handleKeyClick(e, key)}
+              onClick=${(e) => handleKeyClick(e, key)}
+            >${key}</button>
+          `)}
+        </div>
+        <div class="flex justify-center gap-0.5">
+          <div class="w-[4%]"></div>
+          ${row2.map(key => html`
+            <button
+              key=${key}
+              class="${keyClass} w-[9.2%] h-11"
+              onTouchEnd=${(e) => handleKeyClick(e, key)}
+              onClick=${(e) => handleKeyClick(e, key)}
+            >${key}</button>
+          `)}
+          <div class="w-[4%]"></div>
+        </div>
+        <div class="flex justify-center gap-0.5">
+          <button
+            class="${keyClass} w-[14%] h-11 text-xs"
+            onTouchEnd=${(e) => handleKeyClick(e, 'ENTER')}
+            onClick=${(e) => handleKeyClick(e, 'ENTER')}
+          >ENTER</button>
+          ${row3.map(key => html`
+            <button
+              key=${key}
+              class="${keyClass} w-[9.2%] h-11"
+              onTouchEnd=${(e) => handleKeyClick(e, key)}
+              onClick=${(e) => handleKeyClick(e, key)}
+            >${key}</button>
+          `)}
+          <button
+            class="${keyClass} w-[14%] h-11"
+            onTouchEnd=${(e) => handleKeyClick(e, 'BACKSPACE')}
+            onClick=${(e) => handleKeyClick(e, 'BACKSPACE')}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>
